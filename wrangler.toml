@@ -4,39 +4,51 @@ compatibility_date = "2024-01-10"
 compatibility_flags = ["nodejs_compat"]
 
 # ============================================================================
-# CLOUDFLARE BINDINGS CONFIGURATION
+# CLOUDFLARE BINDINGS & SECRETS CONFIGURATION
 # ============================================================================
-# CloudBrain requires THREE bindings to function:
-# 1. SECRETS (KV Namespace) - for storing channel credentials
-# 2. DB (D1 Database) - for storing memories and conversation history
-# 3. AI (Workers AI) - for Llama 2 model access
+# CloudBrain uses TWO approaches for persistence:
 #
-# Bindings are specified by NAME (not secret IDs).
-# This allows bindings to persist across all deployments.
-# Users only need to create KV namespace and D1 database named 'cloudbrain'
+# 1. BINDINGS (for KV & D1) - configured in Dashboard, persist across deploys
+# 2. WORKER SECRETS (for IDs) - stored at worker level, persist across deploys
+#
+# ============================================================================
+# SETUP STEPS
+# ============================================================================
+#
+# STEP 1: Create resources in Cloudflare Dashboard
+#   1. Go to Workers & Pages → Create KV Namespace "cloudbrain"
+#   2. Go to Workers & Pages → Create D1 Database "cloudbrain"
+#
+# STEP 2: Bind resources to worker (Dashboard → CloudBrain → Settings → Bindings)
+#   1. Add KV Namespace:
+#      - Variable name: SECRETS
+#      - Namespace: cloudbrain
+#   2. Add D1 Database:
+#      - Variable name: DB
+#      - Database: cloudbrain
+#   3. AI binding: (auto-available)
+#
+# STEP 3: Store IDs as Worker Secrets (persists with worker across all deploys!)
+#
+#   Get your IDs from Dashboard:
+#   - KV ID: Go to KV → cloudbrain → Details → Copy Namespace ID
+#   - D1 ID: Go to Databases → cloudbrain → Details → Copy Database ID
+#
+#   Store as secrets (these PERSIST FOREVER):
+#
+#   wrangler secret put KV_NAMESPACE_ID
+#   wrangler secret put D1_DATABASE_ID
+#
+# These secrets are:
+# ✅ Stored at the worker level (not in code/git)
+# ✅ Persist across all deployments
+# ✅ Persist across code changes
+# ✅ Persist across npm updates
+# ✅ Never exposed in logs or git
+# ✅ Safe for open source projects
 # ============================================================================
 
-# ============================================================================
-# BINDING 1: KV Namespace (SECRETS)
-# Stores all channel credentials (Telegram, Discord, WhatsApp tokens)
-# ============================================================================
-[[kv_namespaces]]
-binding = "SECRETS"
-id = "cloudbrain"
-
-# ============================================================================
-# BINDING 2: D1 Database (DB)
-# Stores memories and conversation history
-# ============================================================================
-[[d1_databases]]
-binding = "DB"
-database_name = "cloudbrain"
-database_id = "cloudbrain"
-
-# ============================================================================
-# BINDING 3: Workers AI (AI)
-# Provides access to Llama 2 model for natural language processing
-# ============================================================================
+# Workers AI Binding (Auto-available in Cloudflare)
 [ai]
 binding = "AI"
 
@@ -52,8 +64,3 @@ enabled = true
 head_sampling_rate = 1
 persist = true
 invocation_logs = true
-
-[observability.traces]
-enabled = false
-persist = true
-head_sampling_rate = 1

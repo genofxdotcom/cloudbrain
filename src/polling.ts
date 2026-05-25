@@ -1,5 +1,7 @@
 import { CloudBrainEnv, TelegramUpdate } from './types';
-import { handleTelegramWebhook } from './telegram';
+// import { handleTelegramWebhook } from './channels/telegram';
+import { TelegramChannel } from './channels/telegram';
+import { ChannelMessage } from './channels/base';
 
 /**
  * Polling-based update handler for Telegram
@@ -63,12 +65,20 @@ async function pollUpdates(env: CloudBrainEnv): Promise<void> {
     // Process each update
     for (const update of data.result) {
       try {
-        // Handle the update
-        const response = await handleTelegramWebhook(update, env);
+        // Handle the update using TelegramChannel
+        const telegramChannel = new TelegramChannel();
+        await telegramChannel.initialize({
+          SECRET_TELEGRAM_API_TOKEN: env.TELEGRAM_BOT_TOKEN,
+          TELEGRAM_OWNER_ID: env.TELEGRAM_OWNER_ID,
+        });
         
-        if (response.status !== 200) {
-          console.warn(`Update ${update.update_id} failed with status ${response.status}`);
-        }
+        const message: ChannelMessage = {
+          id: update.update_id.toString(),
+          channelType: 'telegram',
+          userId: update.message?.from?.id?.toString() || '',
+          text: update.message?.text || '',
+          timestamp: Date.now(),
+        };
         
         // Update offset for next poll
         pollingState.offset = update.update_id + 1;

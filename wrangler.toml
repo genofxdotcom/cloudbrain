@@ -4,66 +4,37 @@ compatibility_date = "2024-01-10"
 compatibility_flags = ["nodejs_compat"]
 
 # ============================================================================
-# CLOUDFLARE BINDINGS CONFIGURATION - PERSISTENT SETUP
+# CLOUDFLARE BINDINGS CONFIGURATION
 # ============================================================================
 # CloudBrain requires THREE bindings to function properly.
-# These bindings are PERSISTENT and survive all future deployments.
-#
-# BINDINGS ARE CONFIGURED IN CLOUDFLARE DASHBOARD, NOT IN CODE
-# See BINDINGS_PERSISTENCE_GUIDE.md for complete setup instructions
+# These bindings PERSIST across all deployments when configured in Dashboard.
 # ============================================================================
 
 # ============================================================================
-# BINDING 1: KV Namespace (SECRETS) - PERSISTENT
+# BINDING 1: KV Namespace (SECRETS)
+# Stores all channel credentials (Telegram, Discord, WhatsApp tokens)
 # ============================================================================
-# Purpose: Stores all channel credentials (Telegram, Discord, WhatsApp tokens)
-# 
-# Setup in Cloudflare Dashboard (PERSISTS ACROSS ALL DEPLOYS):
-# 1. Go to: Workers and Pages → CloudBrain → Settings → Bindings
-# 2. Click "Add binding"
-# 3. Variable name: SECRETS
-# 4. KV Namespace: cloudbrain (select existing or create new)
-# 5. Save
-#
-# The SECRETS binding will now persist forever across all future deployments.
-# It is NOT affected by code changes, npm updates, or redeployments.
-# ============================================================================
+[[kv_namespaces]]
+binding = "SECRETS"
+database_name = "cloudbrain"
 
-# For local development only, uncomment and add your actual namespace IDs:
-# [[kv_namespaces]]
-# binding = "SECRETS"
-# id = "your-kv-namespace-id"
-# preview_id = "your-kv-preview-id"
+# For local development with preview, uncomment:
+# preview_database_name = "cloudbrain_preview"
 
 # ============================================================================
-# BINDING 2: D1 Database (DB) - PERSISTENT
+# BINDING 2: D1 Database (DB)
+# Stores memories and conversation history
 # ============================================================================
-# Purpose: Stores memories and conversation history
-#
-# Setup in Cloudflare Dashboard (PERSISTS ACROSS ALL DEPLOYS):
-# 1. Go to: Workers and Pages → CloudBrain → Settings → Bindings
-# 2. Click "Add binding"
-# 3. Variable name: DB
-# 4. D1 Database: cloudbrain (select existing or create new)
-# 5. Save
-#
-# The DB binding will now persist forever across all future deployments.
-# It is NOT affected by code changes, npm updates, or redeployments.
-# ============================================================================
+[[d1_databases]]
+binding = "DB"
+database_name = "cloudbrain"
 
-# For local development only, uncomment and add your actual database ID:
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "cloudbrain"
-# database_id = "your-d1-database-id"
+# For local development with preview, uncomment:
+# preview_database_name = "cloudbrain_preview"
 
 # ============================================================================
-# BINDING 3: Workers AI (AI) - PERSISTENT
-# ============================================================================
-# Purpose: Provides access to Llama 2 model for natural language processing
-#
-# Already pre-configured and auto-available in Cloudflare.
-# No additional setup required - this binding works by default.
+# BINDING 3: Workers AI (AI)
+# Provides access to Llama 2 model for natural language processing
 # ============================================================================
 [ai]
 binding = "AI"

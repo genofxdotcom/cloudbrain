@@ -120,7 +120,7 @@ async function getCredentialsFromKV(env: Env): Promise<Record<string, string>> {
   try {
     logger.info('KV', 'Fetching credentials from KV namespace');
     const keys = [
-      'TELEGRAM_API_TOKEN',
+      'TELEGRAM_BOT_TOKEN',
       'TELEGRAM_OWNER_ID',
       'DISCORD_BOT_TOKEN',
       'DISCORD_CLIENT_ID',
@@ -130,6 +130,8 @@ async function getCredentialsFromKV(env: Env): Promise<Record<string, string>> {
       'WHATSAPP_BUSINESS_ACCOUNT_ID',
       'WHATSAPP_ACCESS_TOKEN',
       'WHATSAPP_VERIFY_TOKEN',
+      'CLOUDFLARE_API_TOKEN',
+      'CLOUDFLARE_ACCOUNT_ID',
     ];
 
     const credentials: Record<string, string> = {};
@@ -189,7 +191,7 @@ export default {
       if (channelManager.isChannelActive('telegram')) {
         logger.debug('REQUEST', 'Setting up Telegram webhook', { requestId });
         const workerUrl = new URL(request.url).origin;
-        const telegramToken = credentials.TELEGRAM_API_TOKEN;
+        const telegramToken = credentials.TELEGRAM_BOT_TOKEN;
         
         if (telegramToken) {
           // Run webhook setup in background - don't block response
@@ -223,7 +225,7 @@ export default {
         if (pathname === '/webhook/status' || pathname === '/telegram/status') {
           logger.info('WEBHOOK', 'Webhook status requested', { requestId });
           
-          if (!credentials.TELEGRAM_API_TOKEN) {
+          if (!credentials.TELEGRAM_BOT_TOKEN) {
             return new Response(
               JSON.stringify({
                 error: 'Telegram not configured',
@@ -234,7 +236,7 @@ export default {
             );
           }
 
-          const webhookStatus = await getWebhookStatus(credentials.TELEGRAM_API_TOKEN);
+          const webhookStatus = await getWebhookStatus(credentials.TELEGRAM_BOT_TOKEN);
           return new Response(
             JSON.stringify({
               webhook: webhookStatus,

@@ -6,9 +6,8 @@ export interface CloudBrainEnv {
   DB: any;       // D1 Database - Stores memories and conversation history
   AI: any;       // Workers AI - Provides LLM access (Llama 2)
   
-  // Optional: For advanced features (creating/managing workers dynamically)
-  CLOUDFLARE_API_TOKEN?: string;
-  CLOUDFLARE_ACCOUNT_ID?: string;
+  // NOTE: CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are fetched from KV credentials
+  // They are used by the AI agent to manage Cloudflare resources
 }
 
 export interface Env extends CloudBrainEnv {

@@ -13,7 +13,7 @@ const logger = {
 };
 
 export const CREDENTIAL_KEYS = [
-  'TELEGRAM_API_TOKEN',
+  'TELEGRAM_BOT_TOKEN',
   'TELEGRAM_OWNER_ID',
   'DISCORD_BOT_TOKEN',
   'DISCORD_CLIENT_ID',
@@ -180,7 +180,7 @@ export async function validateTelegramCredentials(env: Env): Promise<{
   ownerId: { exists: boolean; valid: boolean };
   ready: boolean;
 }> {
-  const token = await validateCredential(env, 'TELEGRAM_API_TOKEN', (value) => {
+  const token = await validateCredential(env, 'TELEGRAM_BOT_TOKEN', (value) => {
     // Telegram token format: 123456789:ABCdefGHI...
     return /^\d+:[a-zA-Z0-9_-]+$/.test(value);
   });

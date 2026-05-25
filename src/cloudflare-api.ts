@@ -20,11 +20,36 @@ interface ResourceManifest {
 let cachedManifest: { accountId: string; manifest: ResourceManifest } | null = null;
 let manifestPromise: Promise<ResourceManifest> | null = null;
 
-async function cloudflareRequest<T>(env: CloudBrainEnv, path: string, init: RequestInit = {}): Promise<T> {
+/**
+ * Get Cloudflare credentials from KV
+ * These are required for the AI agent to manage Cloudflare resources
+ */
+async function getCloudflareCredentials(env: CloudBrainEnv): Promise<{ apiToken: string; accountId: string }> {
+  try {
+    const apiToken = await env.SECRETS.get('CLOUDFLARE_API_TOKEN');
+    const accountId = await env.SECRETS.get('CLOUDFLARE_ACCOUNT_ID');
+
+    if (!apiToken || !accountId) {
+      throw new Error('Cloudflare credentials not found in KV');
+    }
+
+    return { apiToken, accountId };
+  } catch (error) {
+    throw new Error(`Failed to get Cloudflare credentials: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+async function cloudflareRequest<T>(
+  env: CloudBrainEnv,
+  apiToken: string,
+  accountId: string,
+  path: string,
+  init: RequestInit = {}
+): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
-      Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
+      Authorization: `Bearer ${apiToken}`,
       'Content-Type': 'application/json',
       ...(init.headers || {}),
     },
@@ -47,15 +72,17 @@ async function cloudflareRequest<T>(env: CloudBrainEnv, path: string, init: Requ
   return (payload?.result as T) ?? (JSON.parse(rawBody || '{}') as T);
 }
 
-async function listD1Databases(env: CloudBrainEnv): Promise<Array<{ uuid: string; name: string }>> {
+async function listD1Databases(env: CloudBrainEnv, apiToken: string, accountId: string): Promise<Array<{ uuid: string; name: string }>> {
   return await cloudflareRequest<Array<{ uuid: string; name: string }>>(
     env,
-    `/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/d1/database`
+    apiToken,
+    accountId,
+    `/accounts/${accountId}/d1/database`
   );
 }
 
-async function createD1Database(env: CloudBrainEnv, name: string): Promise<string> {
-  const result = await cloudflareRequest<{ uuid: string }>(env, `/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/d1/database`, {
+async function createD1Database(env: CloudBrainEnv, apiToken: string, accountId: string, name: string): Promise<string> {
+  const result = await cloudflareRequest<{ uuid: string }>(env, apiToken, accountId, `/accounts/${accountId}/d1/database`, {
     method: 'POST',
     body: JSON.stringify({ name }),
   });
@@ -67,15 +94,17 @@ async function createD1Database(env: CloudBrainEnv, name: string): Promise<strin
   return result.uuid;
 }
 
-async function listKVNamespaces(env: CloudBrainEnv): Promise<Array<{ id: string; title: string }>> {
+async function listKVNamespaces(env: CloudBrainEnv, apiToken: string, accountId: string): Promise<Array<{ id: string; title: string }>> {
   return await cloudflareRequest<Array<{ id: string; title: string }>>(
     env,
-    `/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/storage/kv/namespaces`
+    apiToken,
+    accountId,
+    `/accounts/${accountId}/storage/kv/namespaces`
   );
 }
 
-async function createKVNamespace(env: CloudBrainEnv, title: string): Promise<string> {
-  const result = await cloudflareRequest<{ id: string }>(env, `/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/storage/kv/namespaces`, {
+async function createKVNamespace(env: CloudBrainEnv, apiToken: string, accountId: string, title: string): Promise<string> {
+  const result = await cloudflareRequest<{ id: string }>(env, apiToken, accountId, `/accounts/${accountId}/storage/kv/namespaces`, {
     method: 'POST',
     body: JSON.stringify({ title }),
   });
@@ -87,15 +116,17 @@ async function createKVNamespace(env: CloudBrainEnv, title: string): Promise<str
   return result.id;
 }
 
-async function listR2Buckets(env: CloudBrainEnv): Promise<Array<{ name: string }>> {
+async function listR2Buckets(env: CloudBrainEnv, apiToken: string, accountId: string): Promise<Array<{ name: string }>> {
   return await cloudflareRequest<Array<{ name: string }>>(
     env,
-    `/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/r2/buckets`
+    apiToken,
+    accountId,
+    `/accounts/${accountId}/r2/buckets`
   );
 }
 
-async function createR2Bucket(env: CloudBrainEnv, name: string): Promise<string> {
-  const result = await cloudflareRequest<{ name: string }>(env, `/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/r2/buckets`, {
+async function createR2Bucket(env: CloudBrainEnv, apiToken: string, accountId: string, name: string): Promise<string> {
+  const result = await cloudflareRequest<{ name: string }>(env, apiToken, accountId, `/accounts/${accountId}/r2/buckets`, {
     method: 'POST',
     body: JSON.stringify({ name }),
   });
@@ -107,35 +138,36 @@ async function createR2Bucket(env: CloudBrainEnv, name: string): Promise<string>
   return result.name;
 }
 
-async function bootstrapManifest(env: CloudBrainEnv): Promise<ResourceManifest> {
+async function bootstrapManifest(env: CloudBrainEnv, apiToken: string, accountId: string): Promise<ResourceManifest> {
   const [d1Databases, kvNamespaces, r2Buckets] = await Promise.all([
-    listD1Databases(env),
-    listKVNamespaces(env),
-    listR2Buckets(env),
+    listD1Databases(env, apiToken, accountId),
+    listKVNamespaces(env, apiToken, accountId),
+    listR2Buckets(env, apiToken, accountId),
   ]);
 
   const existingD1 = d1Databases.find((database) => database.name === DEFAULT_D1_DATABASE_NAME);
   const existingKv = kvNamespaces.find((namespace) => namespace.title === DEFAULT_KV_NAMESPACE_TITLE);
   const existingBucket = r2Buckets.find((bucket) => bucket.name === DEFAULT_R2_BUCKET_NAME);
 
-  const d1DatabaseId = existingD1?.uuid || (await createD1Database(env, DEFAULT_D1_DATABASE_NAME));
-  const kvNamespaceId = existingKv?.id || (await createKVNamespace(env, DEFAULT_KV_NAMESPACE_TITLE));
-  const r2BucketName = existingBucket?.name || (await createR2Bucket(env, DEFAULT_R2_BUCKET_NAME));
+  const d1DatabaseId = existingD1?.uuid || (await createD1Database(env, apiToken, accountId, DEFAULT_D1_DATABASE_NAME));
+  const kvNamespaceId = existingKv?.id || (await createKVNamespace(env, apiToken, accountId, DEFAULT_KV_NAMESPACE_TITLE));
+  const r2BucketName = existingBucket?.name || (await createR2Bucket(env, apiToken, accountId, DEFAULT_R2_BUCKET_NAME));
 
   return { d1DatabaseId, kvNamespaceId, r2BucketName };
 }
 
 export async function ensureCloudBrainResources(env: CloudBrainEnv): Promise<ResourceManifest> {
-  if (cachedManifest && cachedManifest.accountId === env.CLOUDFLARE_ACCOUNT_ID) {
+  const { apiToken, accountId } = await getCloudflareCredentials(env);
+
+  if (cachedManifest && cachedManifest.accountId === accountId) {
     return cachedManifest.manifest;
   }
 
   if (!manifestPromise) {
-    manifestPromise = bootstrapManifest(env);
+    manifestPromise = bootstrapManifest(env, apiToken, accountId);
   }
 
   const manifest = await manifestPromise;
-  const accountId = env.CLOUDFLARE_ACCOUNT_ID || '';
   cachedManifest = { accountId, manifest };
   return manifest;
 }
@@ -160,10 +192,13 @@ export async function executeD1Query<T = Record<string, unknown>>(
   sql: string,
   params: Array<string | number | boolean | null> = []
 ): Promise<T[]> {
+  const { apiToken, accountId } = await getCloudflareCredentials(env);
   const databaseId = await getD1DatabaseId(env);
   const result = await cloudflareRequest<{ results?: T[] }>(
     env,
-    `/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/d1/database/${databaseId}/query`,
+    apiToken,
+    accountId,
+    `/accounts/${accountId}/d1/database/${databaseId}/query`,
     {
       method: 'POST',
       body: JSON.stringify({ sql, params }),
@@ -174,12 +209,13 @@ export async function executeD1Query<T = Record<string, unknown>>(
 }
 
 export async function getKVValue(env: CloudBrainEnv, key: string): Promise<string | null> {
+  const { apiToken, accountId } = await getCloudflareCredentials(env);
   const namespaceId = await getKVNamespaceId(env);
   const response = await fetch(
-    `${API_BASE}/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/storage/kv/namespaces/${namespaceId}/values/${encodeURIComponent(key)}`,
+    `${API_BASE}/accounts/${accountId}/storage/kv/namespaces/${namespaceId}/values/${encodeURIComponent(key)}`,
     {
       headers: {
-        Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
+        Authorization: `Bearer ${apiToken}`,
       },
     }
   );
@@ -196,13 +232,14 @@ export async function getKVValue(env: CloudBrainEnv, key: string): Promise<strin
 }
 
 export async function putKVValue(env: CloudBrainEnv, key: string, value: string): Promise<void> {
+  const { apiToken, accountId } = await getCloudflareCredentials(env);
   const namespaceId = await getKVNamespaceId(env);
   const response = await fetch(
-    `${API_BASE}/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/storage/kv/namespaces/${namespaceId}/values/${encodeURIComponent(key)}`,
+    `${API_BASE}/accounts/${accountId}/storage/kv/namespaces/${namespaceId}/values/${encodeURIComponent(key)}`,
     {
       method: 'PUT',
       headers: {
-        Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
+        Authorization: `Bearer ${apiToken}`,
       },
       body: value,
     }
@@ -214,13 +251,14 @@ export async function putKVValue(env: CloudBrainEnv, key: string, value: string)
 }
 
 export async function deleteKVValue(env: CloudBrainEnv, key: string): Promise<void> {
+  const { apiToken, accountId } = await getCloudflareCredentials(env);
   const namespaceId = await getKVNamespaceId(env);
   const response = await fetch(
-    `${API_BASE}/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/storage/kv/namespaces/${namespaceId}/values/${encodeURIComponent(key)}`,
+    `${API_BASE}/accounts/${accountId}/storage/kv/namespaces/${namespaceId}/values/${encodeURIComponent(key)}`,
     {
       method: 'DELETE',
       headers: {
-        Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
+        Authorization: `Bearer ${apiToken}`,
       },
     }
   );

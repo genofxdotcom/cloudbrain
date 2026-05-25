@@ -4,52 +4,66 @@ compatibility_date = "2024-01-10"
 compatibility_flags = ["nodejs_compat"]
 
 # ============================================================================
-# CLOUDFLARE BINDINGS CONFIGURATION
+# CLOUDFLARE BINDINGS CONFIGURATION - PERSISTENT SETUP
 # ============================================================================
-# CloudBrain requires THREE bindings to function:
-# 1. SECRETS (KV Namespace) - Stores channel credentials
-# 2. DB (D1 Database) - Stores memories and conversation history
-# 3. AI (Workers AI) - Provides LLM access
-
-# IMPORTANT: These bindings must be configured in Cloudflare Dashboard:
-# Steps:
-# 1. Go to Workers → cloudbrain → Settings → Bindings
-# 2. Add KV Namespace:
-#    - Variable name: SECRETS
-#    - KV Namespace: cloudbrain
-# 3. Add D1 Database:
-#    - Variable name: DB
-#    - Database: cloudbrain (or create new)
-# 4. Add AI (Workers AI):
-#    - Variable name: AI
-#    - This is pre-configured and auto-available
+# CloudBrain requires THREE bindings to function properly.
+# These bindings are PERSISTENT and survive all future deployments.
+#
+# BINDINGS ARE CONFIGURED IN CLOUDFLARE DASHBOARD, NOT IN CODE
+# See BINDINGS_PERSISTENCE_GUIDE.md for complete setup instructions
 # ============================================================================
 
 # ============================================================================
-# BINDING 1: KV Namespace (SECRETS)
-# Stores all channel credentials (Telegram, Discord, WhatsApp tokens, etc.)
-# NOTE: Replace YOUR_KV_NAMESPACE_ID with actual ID from Cloudflare Dashboard
-# Get it from: Workers → cloudbrain → Settings → Bindings → KV Namespaces → cloudbrain
+# BINDING 1: KV Namespace (SECRETS) - PERSISTENT
 # ============================================================================
+# Purpose: Stores all channel credentials (Telegram, Discord, WhatsApp tokens)
+# 
+# Setup in Cloudflare Dashboard (PERSISTS ACROSS ALL DEPLOYS):
+# 1. Go to: Workers and Pages → CloudBrain → Settings → Bindings
+# 2. Click "Add binding"
+# 3. Variable name: SECRETS
+# 4. KV Namespace: cloudbrain (select existing or create new)
+# 5. Save
+#
+# The SECRETS binding will now persist forever across all future deployments.
+# It is NOT affected by code changes, npm updates, or redeployments.
+# ============================================================================
+
+# For local development only, uncomment and add your actual namespace IDs:
 # [[kv_namespaces]]
 # binding = "SECRETS"
-# id = "YOUR_KV_NAMESPACE_ID"
-# preview_id = "YOUR_KV_PREVIEW_ID"
+# id = "your-kv-namespace-id"
+# preview_id = "your-kv-preview-id"
 
 # ============================================================================
-# BINDING 2: D1 Database (DB)
-# Stores memories and conversation history
-# NOTE: Replace YOUR_D1_DATABASE_ID with actual ID from Cloudflare Dashboard
-# Get it from: Workers → cloudbrain → Settings → Bindings → D1 Databases → cloudbrain
+# BINDING 2: D1 Database (DB) - PERSISTENT
 # ============================================================================
+# Purpose: Stores memories and conversation history
+#
+# Setup in Cloudflare Dashboard (PERSISTS ACROSS ALL DEPLOYS):
+# 1. Go to: Workers and Pages → CloudBrain → Settings → Bindings
+# 2. Click "Add binding"
+# 3. Variable name: DB
+# 4. D1 Database: cloudbrain (select existing or create new)
+# 5. Save
+#
+# The DB binding will now persist forever across all future deployments.
+# It is NOT affected by code changes, npm updates, or redeployments.
+# ============================================================================
+
+# For local development only, uncomment and add your actual database ID:
 # [[d1_databases]]
 # binding = "DB"
 # database_name = "cloudbrain"
-# database_id = "YOUR_D1_DATABASE_ID"
+# database_id = "your-d1-database-id"
 
 # ============================================================================
-# BINDING 3: Workers AI (AI)
-# Provides access to Llama 2 model for natural language processing
+# BINDING 3: Workers AI (AI) - PERSISTENT
+# ============================================================================
+# Purpose: Provides access to Llama 2 model for natural language processing
+#
+# Already pre-configured and auto-available in Cloudflare.
+# No additional setup required - this binding works by default.
 # ============================================================================
 [ai]
 binding = "AI"

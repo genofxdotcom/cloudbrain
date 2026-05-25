@@ -29,41 +29,24 @@ compatibility_flags = ["nodejs_compat"]
 # BINDING 1: KV Namespace (SECRETS)
 # Stores all channel credentials (Telegram, Discord, WhatsApp tokens, etc.)
 # ============================================================================
-# In Cloudflare Dashboard:
-# 1. Go to Workers → cloudbrain → Settings → Bindings
-# 2. Add KV Namespace with:
-#    - Variable name: SECRETS
-#    - KV Namespace: cloudbrain
-#
-# For local development, uncomment and configure:
-#
-# [[kv_namespaces]]
-# binding = "SECRETS"
-# id = "your-kv-namespace-id"
-# preview_id = "your-kv-preview-id"
+[[kv_namespaces]]
+binding = "SECRETS"
+id = "cloudbrain"
+preview_id = "cloudbrain_preview"
 
 # ============================================================================
 # BINDING 2: D1 Database (DB)
 # Stores memories and conversation history
 # ============================================================================
-# In Cloudflare Dashboard:
-# 1. Go to Workers → cloudbrain → Settings → Bindings
-# 2. Add D1 Database with:
-#    - Variable name: DB
-#    - Database: cloudbrain
-#
-# For local development, uncomment and configure:
-#
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "cloudbrain"
-# database_id = "your-d1-database-id"
+[[d1_databases]]
+binding = "DB"
+database_name = "cloudbrain"
+database_id = "cloudbrain"
 
 # ============================================================================
 # BINDING 3: Workers AI (AI)
 # Provides access to Llama 2 model for natural language processing
 # ============================================================================
-# Already pre-configured and auto-available in Cloudflare
 [ai]
 binding = "AI"
 

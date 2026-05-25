@@ -1,14 +1,18 @@
 // Type definitions for CloudBrain
 
 export interface CloudBrainEnv {
-  // Bindings (automatically configured)
-  AI: any; // Workers AI binding
+  // Cloudflare Bindings (automatically configured in Dashboard)
+  SECRETS: any;  // KV Namespace - Stores channel credentials
+  DB: any;       // D1 Database - Stores memories and conversation history
+  AI: any;       // Workers AI - Provides LLM access (Llama 2)
   
-  // Environment variables (set via Cloudflare Dashboard)
-  TELEGRAM_BOT_TOKEN: string;
-  TELEGRAM_OWNER_ID: string;
-  CLOUDFLARE_API_TOKEN: string;
-  CLOUDFLARE_ACCOUNT_ID: string;
+  // Optional: For advanced features (creating/managing workers dynamically)
+  CLOUDFLARE_API_TOKEN?: string;
+  CLOUDFLARE_ACCOUNT_ID?: string;
+}
+
+export interface Env extends CloudBrainEnv {
+  // Same as CloudBrainEnv - used interchangeably
 }
 
 export interface TelegramUpdate {

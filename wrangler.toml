@@ -3,24 +3,49 @@ main = "src/index.ts"
 compatibility_date = "2024-01-10"
 compatibility_flags = ["nodejs_compat"]
 
-# KV Namespace Binding
-# Bind your KV namespace in Cloudflare Dashboard:
-# 1. Go to Workers → CloudBrain → Settings → Bindings
-# 2. Add KV Namespace binding with:
-#    - Variable name: SECRETS
-#    - KV Namespace: cloudbrain (or your namespace name)
-# 3. No need to edit this file - binding is done in dashboard
-#
-# For local development, you can add:
-# [[kv_namespaces]]
-# binding = "SECRETS"
-# id = "your-namespace-id"
-# preview_id = "your-preview-id"
+# ============================================================================
+# CLOUDFLARE BINDINGS CONFIGURATION
+# ============================================================================
+# CloudBrain requires THREE bindings to function:
+# 1. SECRETS (KV Namespace) - Stores channel credentials
+# 2. DB (D1 Database) - Stores memories and conversation history
+# 3. AI (Workers AI) - Provides LLM access
 
+# IMPORTANT: These bindings must be configured in Cloudflare Dashboard:
+# Steps:
+# 1. Go to Workers → cloudbrain → Settings → Bindings
+# 2. Add KV Namespace:
+#    - Variable name: SECRETS
+#    - KV Namespace: cloudbrain
+# 3. Add D1 Database:
+#    - Variable name: DB
+#    - Database: cloudbrain (or create new)
+# 4. Add AI (Workers AI):
+#    - Variable name: AI
+#    - This is pre-configured and auto-available
+# ============================================================================
+
+# Workers AI Binding (Workers AI Gateway)
+# Provides access to Llama 2 model for natural language processing
 [ai]
 binding = "AI"
 
-# Observability - Enable live logs
+# For local development with wrangler dev:
+# Add these sections to bind local KV and D1:
+#
+# [[kv_namespaces]]
+# binding = "SECRETS"
+# id = "your-kv-namespace-id"
+# preview_id = "your-kv-preview-id"
+#
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "cloudbrain"
+# database_id = "your-d1-database-id"
+
+# ============================================================================
+# OBSERVABILITY - Live logging and diagnostics
+# ============================================================================
 [observability]
 enabled = true
 head_sampling_rate = 1

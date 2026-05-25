@@ -288,6 +288,25 @@ export default {
           return new Response('Forbidden', { status: 403 });
         }
 
+        // Debug diagnostics endpoint
+        if (pathname === '/debug/diagnostics') {
+          logger.info('DEBUG', 'Diagnostics requested', { requestId });
+          try {
+            const { generateDiagnosticReport } = await import('./debug/kv-test');
+            const report = await generateDiagnosticReport(env);
+            return new Response(report, {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            });
+          } catch (error) {
+            logger.error('DEBUG', 'Failed to generate diagnostics', error);
+            return new Response(
+              JSON.stringify({ error: 'Failed to generate diagnostics' }),
+              { status: 500, headers: { 'Content-Type': 'application/json' } }
+            );
+          }
+        }
+
         logger.info('REQUEST', 'GET request to root', { requestId });
         return new Response(
           JSON.stringify({

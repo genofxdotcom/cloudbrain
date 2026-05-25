@@ -6,36 +6,30 @@ compatibility_flags = ["nodejs_compat"]
 # ============================================================================
 # CLOUDFLARE BINDINGS CONFIGURATION
 # ============================================================================
-# CloudBrain requires THREE bindings to function properly.
-# These bindings PERSIST across all deployments when configured in Dashboard.
+# CloudBrain requires THREE bindings configured in Cloudflare Dashboard:
+# 1. SECRETS (KV Namespace) - for storing channel credentials
+# 2. DB (D1 Database) - for storing memories and conversation history
+# 3. AI (Workers AI) - for Llama 2 model access
+#
+# Bindings are configured in Dashboard, NOT in wrangler.toml
+# This ensures credentials/IDs are never exposed in code/git
+#
+# Setup in Cloudflare Dashboard:
+# 1. Go to: Workers and Pages → CloudBrain → Settings → Bindings
+# 2. Add KV Namespace binding:
+#    - Variable name: SECRETS
+#    - KV Namespace: cloudbrain
+# 3. Add D1 Database binding:
+#    - Variable name: DB
+#    - D1 Database: cloudbrain
+# 4. Add AI binding:
+#    - Variable name: AI
+#    - (Auto-available, no setup needed)
+#
+# See README.md for complete setup instructions
 # ============================================================================
 
-# ============================================================================
-# BINDING 1: KV Namespace (SECRETS)
-# Stores all channel credentials (Telegram, Discord, WhatsApp tokens)
-# ============================================================================
-[[kv_namespaces]]
-binding = "SECRETS"
-database_name = "cloudbrain"
-
-# For local development with preview, uncomment:
-# preview_database_name = "cloudbrain_preview"
-
-# ============================================================================
-# BINDING 2: D1 Database (DB)
-# Stores memories and conversation history
-# ============================================================================
-[[d1_databases]]
-binding = "DB"
-database_name = "cloudbrain"
-
-# For local development with preview, uncomment:
-# preview_database_name = "cloudbrain_preview"
-
-# ============================================================================
-# BINDING 3: Workers AI (AI)
-# Provides access to Llama 2 model for natural language processing
-# ============================================================================
+# Workers AI Binding (Auto-available in Cloudflare)
 [ai]
 binding = "AI"
 

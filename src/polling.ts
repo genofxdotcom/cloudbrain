@@ -1,5 +1,4 @@
 import { CloudBrainEnv, TelegramUpdate } from './types';
-// import { handleTelegramWebhook } from './channels/telegram';
 import { TelegramChannel } from './channels/telegram';
 import { ChannelMessage } from './channels/base';
 
@@ -7,6 +6,10 @@ import { ChannelMessage } from './channels/base';
  * Polling-based update handler for Telegram
  * This is more reliable on serverless platforms than webhooks
  * because it avoids IP caching issues
+ * 
+ * NOTE: This is currently not used by default.
+ * The webhook-based approach is preferred for Cloudflare Workers.
+ * This can be used with Scheduled Workers for polling if needed.
  */
 
 interface PollingState {
@@ -22,14 +25,22 @@ let pollingState: PollingState = {
 
 /**
  * Start polling for Telegram updates
- * This should be called from a scheduled worker or Durable Object
+ * Requires credentials object with Telegram token and owner ID
  */
-export async function startPolling(env: CloudBrainEnv): Promise<void> {
+export async function startPolling(credentials: Record<string, string>): Promise<void> {
   console.log('🔄 Starting Telegram polling...');
+  
+  const token = credentials.SECRET_TELEGRAM_API_TOKEN;
+  const ownerId = credentials.TELEGRAM_OWNER_ID;
+  
+  if (!token || !ownerId) {
+    console.error('❌ Telegram credentials not available for polling');
+    return;
+  }
   
   while (true) {
     try {
-      await pollUpdates(env);
+      await pollUpdates(token);
     } catch (error) {
       console.error('Polling error:', error);
     }
@@ -42,10 +53,10 @@ export async function startPolling(env: CloudBrainEnv): Promise<void> {
 /**
  * Poll for updates from Telegram
  */
-async function pollUpdates(env: CloudBrainEnv): Promise<void> {
+async function pollUpdates(telegramToken: string): Promise<void> {
   try {
     const response = await fetch(
-      `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getUpdates?offset=${pollingState.offset}&timeout=30`,
+      `https://api.telegram.org/bot${telegramToken}/getUpdates?offset=${pollingState.offset}&timeout=30`,
       {
         method: 'GET',
       }
@@ -65,13 +76,6 @@ async function pollUpdates(env: CloudBrainEnv): Promise<void> {
     // Process each update
     for (const update of data.result) {
       try {
-        // Handle the update using TelegramChannel
-        const telegramChannel = new TelegramChannel();
-        await telegramChannel.initialize({
-          SECRET_TELEGRAM_API_TOKEN: env.TELEGRAM_BOT_TOKEN,
-          TELEGRAM_OWNER_ID: env.TELEGRAM_OWNER_ID,
-        });
-        
         const message: ChannelMessage = {
           id: update.update_id.toString(),
           channelType: 'telegram',
@@ -79,6 +83,8 @@ async function pollUpdates(env: CloudBrainEnv): Promise<void> {
           text: update.message?.text || '',
           timestamp: Date.now(),
         };
+        
+        console.log('📨 Received update via polling:', { updateId: update.update_id, userId: message.userId });
         
         // Update offset for next poll
         pollingState.offset = update.update_id + 1;

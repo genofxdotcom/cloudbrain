@@ -126,7 +126,7 @@ async function bootstrapManifest(env: CloudBrainEnv): Promise<ResourceManifest> 
 }
 
 export async function ensureCloudBrainResources(env: CloudBrainEnv): Promise<ResourceManifest> {
-  if (cachedManifest?.accountId === env.CLOUDFLARE_ACCOUNT_ID) {
+  if (cachedManifest && cachedManifest.accountId === env.CLOUDFLARE_ACCOUNT_ID) {
     return cachedManifest.manifest;
   }
 
@@ -135,7 +135,8 @@ export async function ensureCloudBrainResources(env: CloudBrainEnv): Promise<Res
   }
 
   const manifest = await manifestPromise;
-  cachedManifest = { accountId: env.CLOUDFLARE_ACCOUNT_ID, manifest };
+  const accountId = env.CLOUDFLARE_ACCOUNT_ID || '';
+  cachedManifest = { accountId, manifest };
   return manifest;
 }
 

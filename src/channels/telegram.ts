@@ -33,11 +33,11 @@ export class TelegramChannel extends BaseChannel {
   async initialize(credentials: Record<string, string>): Promise<void> {
     logger.info('TELEGRAM', 'Initializing Telegram channel');
 
-    this.token = credentials.SECRET_TELEGRAM_API_TOKEN || '';
+    this.token = credentials.TELEGRAM_API_TOKEN || '';
     this.ownerId = credentials.TELEGRAM_OWNER_ID || '';
 
     if (!this.token) {
-      logger.error('TELEGRAM', 'Missing SECRET_TELEGRAM_API_TOKEN');
+      logger.error('TELEGRAM', 'Missing TELEGRAM_API_TOKEN');
       this.isActive = false;
       return;
     }

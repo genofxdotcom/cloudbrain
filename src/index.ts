@@ -120,7 +120,7 @@ async function getCredentialsFromKV(env: Env): Promise<Record<string, string>> {
   try {
     logger.info('KV', 'Fetching credentials from KV namespace');
     const keys = [
-      'SECRET_TELEGRAM_API_TOKEN',
+      'TELEGRAM_API_TOKEN',
       'TELEGRAM_OWNER_ID',
       'DISCORD_BOT_TOKEN',
       'DISCORD_CLIENT_ID',
@@ -189,7 +189,7 @@ export default {
       if (channelManager.isChannelActive('telegram')) {
         logger.debug('REQUEST', 'Setting up Telegram webhook', { requestId });
         const workerUrl = new URL(request.url).origin;
-        const telegramToken = credentials.SECRET_TELEGRAM_API_TOKEN;
+        const telegramToken = credentials.TELEGRAM_API_TOKEN;
         
         if (telegramToken) {
           // Run webhook setup in background - don't block response
@@ -223,7 +223,7 @@ export default {
         if (pathname === '/webhook/status' || pathname === '/telegram/status') {
           logger.info('WEBHOOK', 'Webhook status requested', { requestId });
           
-          if (!credentials.SECRET_TELEGRAM_API_TOKEN) {
+          if (!credentials.TELEGRAM_API_TOKEN) {
             return new Response(
               JSON.stringify({
                 error: 'Telegram not configured',
@@ -234,7 +234,7 @@ export default {
             );
           }
 
-          const webhookStatus = await getWebhookStatus(credentials.SECRET_TELEGRAM_API_TOKEN);
+          const webhookStatus = await getWebhookStatus(credentials.TELEGRAM_API_TOKEN);
           return new Response(
             JSON.stringify({
               webhook: webhookStatus,
@@ -252,7 +252,7 @@ export default {
 
           logger.info('SETUP', `Setup request for ${channelType}`, { requestId });
 
-          if (channelType === 'telegram' && token === credentials.SECRET_TELEGRAM_API_TOKEN) {
+          if (channelType === 'telegram' && token === credentials.TELEGRAM_API_TOKEN) {
             logger.info('SETUP', 'Telegram webhook setup initiated', { requestId });
             return new Response(
               JSON.stringify({ status: 'Telegram webhook setup initiated' }),

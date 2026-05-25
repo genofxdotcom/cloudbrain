@@ -137,12 +137,12 @@ Add credentials to KV for channels you want to use. If no credentials provided, 
 
 **Add to KV**:
 ```bash
-wrangler kv:key put --namespace-id=YOUR_NAMESPACE_ID SECRET_TELEGRAM_API_TOKEN "123456789:ABCdefGHI..."
+wrangler kv:key put --namespace-id=YOUR_NAMESPACE_ID TELEGRAM_API_TOKEN "123456789:ABCdefGHI..."
 wrangler kv:key put --namespace-id=YOUR_NAMESPACE_ID TELEGRAM_OWNER_ID "987654321"
 ```
 
 **KV Key Names**:
-- `SECRET_TELEGRAM_API_TOKEN` - Your bot token
+- `TELEGRAM_API_TOKEN` - Your bot token
 - `TELEGRAM_OWNER_ID` - Your Telegram user ID
 
 ---

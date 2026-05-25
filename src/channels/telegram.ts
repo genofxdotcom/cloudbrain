@@ -132,32 +132,43 @@ export class TelegramChannel extends BaseChannel {
   }
 
   async sendMessage(userId: string, text: string): Promise<ChannelResponse> {
-    if (!this.bot) {
-      logger.error('TELEGRAM', 'Telegram bot not initialized');
-      return { success: false, error: 'Telegram bot not initialized' };
+    if (!this.token) {
+      logger.error('TELEGRAM', 'Telegram token not available');
+      return { success: false, error: 'Telegram token not available' };
     }
 
     try {
       logger.debug('TELEGRAM', 'Sending message', { userId, textLength: text.length });
 
-      // Use the correct API from @codebam/cf-workers-telegram-bot
-      // The bot instance has a sendMessage method directly
-      const result = await (this.bot as any).sendMessage(parseInt(userId), text);
+      // Use direct Telegram Bot API call via fetch
+      // This is more reliable than using the library's internal methods
+      const response = await fetch(`https://api.telegram.org/bot${this.token}/sendMessage`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          chat_id: parseInt(userId),
+          text: text,
+        }),
+      });
 
-      if (result && result.message_id) {
+      const result = await response.json();
+
+      if (result.ok && result.result?.message_id) {
         logger.info('TELEGRAM', 'Message sent successfully', {
           userId,
-          messageId: result.message_id,
+          messageId: result.result.message_id,
         });
         return {
           success: true,
-          messageId: result.message_id?.toString(),
+          messageId: result.result.message_id?.toString(),
         };
       } else {
-        logger.error('TELEGRAM', 'Invalid response from sendMessage', { result });
+        logger.error('TELEGRAM', 'Invalid response from Telegram API', { result });
         return {
           success: false,
-          error: 'Invalid response from Telegram API',
+          error: result.description || 'Invalid response from Telegram API',
         };
       }
     } catch (error) {
@@ -170,31 +181,43 @@ export class TelegramChannel extends BaseChannel {
   }
 
   async sendFile(userId: string, fileUrl: string, caption?: string): Promise<ChannelResponse> {
-    if (!this.bot) {
-      logger.error('TELEGRAM', 'Telegram bot not initialized');
-      return { success: false, error: 'Telegram bot not initialized' };
+    if (!this.token) {
+      logger.error('TELEGRAM', 'Telegram token not available');
+      return { success: false, error: 'Telegram token not available' };
     }
 
     try {
       logger.debug('TELEGRAM', 'Sending file', { userId, fileUrl, hasCaption: !!caption });
 
-      // Use the correct API from @codebam/cf-workers-telegram-bot
-      const result = await (this.bot as any).sendDocument(parseInt(userId), fileUrl, { caption });
+      // Use direct Telegram Bot API call via fetch
+      const response = await fetch(`https://api.telegram.org/bot${this.token}/sendDocument`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          chat_id: parseInt(userId),
+          document: fileUrl,
+          caption: caption || undefined,
+        }),
+      });
 
-      if (result && result.message_id) {
+      const result = await response.json();
+
+      if (result.ok && result.result?.message_id) {
         logger.info('TELEGRAM', 'File sent successfully', {
           userId,
-          messageId: result.message_id,
+          messageId: result.result.message_id,
         });
         return {
           success: true,
-          messageId: result.message_id?.toString(),
+          messageId: result.result.message_id?.toString(),
         };
       } else {
-        logger.error('TELEGRAM', 'Invalid response from sendDocument', { result });
+        logger.error('TELEGRAM', 'Invalid response from Telegram API', { result });
         return {
           success: false,
-          error: 'Invalid response from Telegram API',
+          error: result.description || 'Invalid response from Telegram API',
         };
       }
     } catch (error) {

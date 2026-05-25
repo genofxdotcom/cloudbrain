@@ -28,20 +28,24 @@ compatibility_flags = ["nodejs_compat"]
 # ============================================================================
 # BINDING 1: KV Namespace (SECRETS)
 # Stores all channel credentials (Telegram, Discord, WhatsApp tokens, etc.)
+# NOTE: Replace YOUR_KV_NAMESPACE_ID with actual ID from Cloudflare Dashboard
+# Get it from: Workers → cloudbrain → Settings → Bindings → KV Namespaces → cloudbrain
 # ============================================================================
-[[kv_namespaces]]
-binding = "SECRETS"
-id = "cloudbrain"
-preview_id = "cloudbrain_preview"
+# [[kv_namespaces]]
+# binding = "SECRETS"
+# id = "YOUR_KV_NAMESPACE_ID"
+# preview_id = "YOUR_KV_PREVIEW_ID"
 
 # ============================================================================
 # BINDING 2: D1 Database (DB)
 # Stores memories and conversation history
+# NOTE: Replace YOUR_D1_DATABASE_ID with actual ID from Cloudflare Dashboard
+# Get it from: Workers → cloudbrain → Settings → Bindings → D1 Databases → cloudbrain
 # ============================================================================
-[[d1_databases]]
-binding = "DB"
-database_name = "cloudbrain"
-database_id = "cloudbrain"
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "cloudbrain"
+# database_id = "YOUR_D1_DATABASE_ID"
 
 # ============================================================================
 # BINDING 3: Workers AI (AI)

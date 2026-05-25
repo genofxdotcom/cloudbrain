@@ -1,10 +1,14 @@
 /**
  * Skills/Actions system for CloudBrain
  * Handles natural language actions like "send me that file", "review that file", etc.
+ * Includes workflow creation and management
  */
 
 import { ChannelManager } from '../channels/manager';
 import { MemoryDatabase } from '../db/memory';
+import { WorkflowSkills } from './workflow';
+
+export { WorkflowSkills } from './workflow';
 
 export interface ActionContext {
   userId: string;

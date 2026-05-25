@@ -3,24 +3,63 @@ main = "src/index.ts"
 compatibility_date = "2024-01-10"
 compatibility_flags = ["nodejs_compat"]
 
-# KV Namespace Binding
-# Bind your KV namespace in Cloudflare Dashboard:
-# 1. Go to Workers → CloudBrain → Settings → Bindings
-# 2. Add KV Namespace binding with:
-#    - Variable name: SECRETS
-#    - KV Namespace: cloudbrain (or your namespace name)
-# 3. No need to edit this file - binding is done in dashboard
+# ============================================================================
+# CLOUDFLARE BINDINGS CONFIGURATION
+# ============================================================================
 #
-# For local development, you can add:
+# CloudBrain requires 3 bindings to function:
+# 1. SECRETS (KV Namespace) - Stores all credentials
+# 2. DB (D1 Database) - Stores memories and conversation history
+# 3. AI (AI Gateway) - Provides Llama 2 model access
+#
+# Setup Instructions:
+# 1. Create KV namespace: wrangler kv:namespace create "cloudbrain"
+# 2. Create D1 database: wrangler d1 create cloudbrain
+# 3. In Cloudflare Dashboard:
+#    - Workers → CloudBrain → Settings → Bindings
+#    - Add KV Namespace: Variable name "SECRETS", Namespace "cloudbrain"
+#    - Add D1 Database: Variable name "DB", Database "cloudbrain"
+#    - Add AI Binding: Variable name "AI" (auto-available)
+#
+# The bindings below are for Cloudflare dashboard configuration reference.
+# Set them via: wrangler secret put, wrangler kv, or dashboard UI.
+
+# ============================================================================
+# KV NAMESPACE - Stores credentials and cache
+# ============================================================================
+# Bind in Dashboard:
+# - Variable: SECRETS
+# - Namespace: cloudbrain
+#
+# For local development, uncomment and configure:
 # [[kv_namespaces]]
 # binding = "SECRETS"
-# id = "your-namespace-id"
-# preview_id = "your-preview-id"
+# id = "your-kv-namespace-id"
+# preview_id = "your-preview-namespace-id"
 
+# ============================================================================
+# D1 DATABASE - Stores memories and conversation history
+# ============================================================================
+# Bind in Dashboard:
+# - Variable: DB
+# - Database: cloudbrain
+#
+# For local development, uncomment and configure:
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "cloudbrain"
+# database_id = "your-database-id"
+
+# ============================================================================
+# AI GATEWAY - Provides Llama 2 model access
+# ============================================================================
+# Automatically available via Cloudflare AI
 [ai]
 binding = "AI"
 
-# Observability - Enable live logs
+# ============================================================================
+# OBSERVABILITY - Enable live logs and tracing
+# ============================================================================
 [observability]
 enabled = true
 head_sampling_rate = 1

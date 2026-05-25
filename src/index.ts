@@ -185,9 +185,22 @@ export default {
       const agentCoordinator = new AgentCoordinator(channelManager, memoryDb, env.AI);
 
       // Ensure Telegram webhook is registered (runs once per worker instance)
-      logger.debug('REQUEST', 'Checking Telegram webhook setup', { requestId });
-      const workerUrl = new URL(request.url).origin;
-      await ensureWebhookSetup(env as any, workerUrl);
+      // IMPORTANT: Must run AFTER credentials are loaded from KV
+      if (channelManager.isChannelActive('telegram')) {
+        logger.debug('REQUEST', 'Setting up Telegram webhook', { requestId });
+        const workerUrl = new URL(request.url).origin;
+        const telegramToken = credentials.SECRET_TELEGRAM_API_TOKEN;
+        
+        if (telegramToken) {
+          // Run webhook setup in background - don't block response
+          ctx.waitUntil(
+            ensureWebhookSetup(telegramToken, workerUrl)
+              .catch(error => logger.error('WEBHOOK', 'Background webhook setup failed', error))
+          );
+        } else {
+          logger.error('REQUEST', 'Telegram token not available for webhook setup', { requestId });
+        }
+      }
 
       // Handle diagnostic endpoint
       if (request.method === 'GET') {
@@ -207,9 +220,21 @@ export default {
         }
 
         // Webhook status endpoint
-        if (pathname === '/webhook/status') {
+        if (pathname === '/webhook/status' || pathname === '/telegram/status') {
           logger.info('WEBHOOK', 'Webhook status requested', { requestId });
-          const webhookStatus = await getWebhookStatus(env as any);
+          
+          if (!credentials.SECRET_TELEGRAM_API_TOKEN) {
+            return new Response(
+              JSON.stringify({
+                error: 'Telegram not configured',
+                timestamp: new Date().toISOString(),
+                requestId,
+              }),
+              { status: 400, headers: { 'Content-Type': 'application/json' } }
+            );
+          }
+
+          const webhookStatus = await getWebhookStatus(credentials.SECRET_TELEGRAM_API_TOKEN);
           return new Response(
             JSON.stringify({
               webhook: webhookStatus,

@@ -67,12 +67,19 @@ export class TelegramChannel extends BaseChannel {
 
   async handleMessage(payload: any): Promise<ChannelMessage | null> {
     try {
-      logger.debug('TELEGRAM', 'Handling incoming message');
+      logger.debug('TELEGRAM', 'Handling incoming message payload', { 
+        hasMessage: !!payload.message,
+        payloadKeys: Object.keys(payload)
+      });
 
       const update = payload;
 
       if (!update.message) {
-        logger.debug('TELEGRAM', 'No message in payload');
+        logger.debug('TELEGRAM', 'No message in payload, checking update type', {
+          updateId: update.update_id,
+          hasCallbackQuery: !!update.callback_query,
+          hasEditedMessage: !!update.edited_message,
+        });
         return null;
       }
 
@@ -84,15 +91,27 @@ export class TelegramChannel extends BaseChannel {
         userId,
         messageId: message.message_id,
         textLength: text.length,
+        hasText: !!text,
+        hasChatId: !!message.chat?.id,
+        senderName: message.from.first_name,
       });
 
       // Only process messages from owner
       if (userId !== this.ownerId) {
-        logger.warn('TELEGRAM', 'Message from unauthorized user', { userId, ownerId: this.ownerId });
+        logger.warn('TELEGRAM', 'Message from unauthorized user', { 
+          userId, 
+          ownerId: this.ownerId,
+          firstName: message.from.first_name
+        });
         return null;
       }
 
-      logger.info('TELEGRAM', 'Valid message from owner', { userId, messageId: message.message_id });
+      if (!text) {
+        logger.debug('TELEGRAM', 'Message has no text content, skipping', { userId, messageId: message.message_id });
+        return null;
+      }
+
+      logger.info('TELEGRAM', 'Valid message from owner', { userId, messageId: message.message_id, textLength: text.length });
 
       return {
         id: message.message_id.toString(),

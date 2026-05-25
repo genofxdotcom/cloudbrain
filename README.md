@@ -1,3 +1,5 @@
+![Cloudbrain](cloudbrain.png)
+
 # CloudBrain - Multi-Channel AI Agent on Cloudflare Workers
 
 An AI-powered multi-channel agent running on Cloudflare Workers with support for Telegram, Discord, and WhatsApp. Features webhook integration, memory database, file storage, and natural language actions.

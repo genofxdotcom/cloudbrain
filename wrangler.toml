@@ -4,51 +4,55 @@ compatibility_date = "2024-01-10"
 compatibility_flags = ["nodejs_compat"]
 
 # ============================================================================
-# CLOUDFLARE BINDINGS & SECRETS CONFIGURATION
+# ⚠️  CRITICAL: CLOUDFLARE BINDINGS CONFIGURATION ⚠️
 # ============================================================================
-# CloudBrain uses TWO approaches for persistence:
+# 🔴 MOST IMPORTANT: You MUST change the IDs below or your worker will FAIL!
 #
-# 1. BINDINGS (for KV & D1) - configured in Dashboard, persist across deploys
-# 2. WORKER SECRETS (for IDs) - stored at worker level, persist across deploys
+# CloudBrain requires THREE bindings to function and PERSIST across deployments.
+# Binding IDs are hardcoded below to survive all redeployments.
 #
-# ============================================================================
-# SETUP STEPS
-# ============================================================================
+# ⚠️  REQUIRED SETUP (DO THIS FIRST):
+# 1. Go to Cloudflare Dashboard → Workers & Pages → KV
+# 2. Create a KV namespace named "cloudbrain" and get its ID
+# 3. Replace the KV ID below: a241f85839474b30b9f1c73fb31f17a5
 #
-# STEP 1: Create resources in Cloudflare Dashboard
-#   1. Go to Workers & Pages → Create KV Namespace "cloudbrain"
-#   2. Go to Workers & Pages → Create D1 Database "cloudbrain"
+# 4. Go to Cloudflare Dashboard → Workers & Pages → Databases
+# 5. Create a D1 database named "cloudbrain" and get its ID
+# 6. Replace the D1 ID below: 6733f0a4-5412-4c1c-959d-3edfc621e020
 #
-# STEP 2: Bind resources to worker (Dashboard → CloudBrain → Settings → Bindings)
-#   1. Add KV Namespace:
-#      - Variable name: SECRETS
-#      - Namespace: cloudbrain
-#   2. Add D1 Database:
-#      - Variable name: DB
-#      - Database: cloudbrain
-#   3. AI binding: (auto-available)
-#
-# STEP 3: Store IDs as Worker Secrets (persists with worker across all deploys!)
-#
-#   Get your IDs from Dashboard:
-#   - KV ID: Go to KV → cloudbrain → Details → Copy Namespace ID
-#   - D1 ID: Go to Databases → cloudbrain → Details → Copy Database ID
-#
-#   Store as secrets (these PERSIST FOREVER):
-#
-#   wrangler secret put KV_NAMESPACE_ID
-#   wrangler secret put D1_DATABASE_ID
-#
-# These secrets are:
-# ✅ Stored at the worker level (not in code/git)
-# ✅ Persist across all deployments
-# ✅ Persist across code changes
-# ✅ Persist across npm updates
-# ✅ Never exposed in logs or git
-# ✅ Safe for open source projects
+# ⚠️  If you don't replace these IDs, deployment will FAIL!
+# ⚠️  Each deployment must have YOUR OWN resource IDs from YOUR account!
 # ============================================================================
 
-# Workers AI Binding (Auto-available in Cloudflare)
+# ============================================================================
+# BINDING 1: KV Namespace (SECRETS)
+# Stores all channel credentials (Telegram, Discord, WhatsApp tokens)
+#
+# ⚠️  CHANGE THIS: Replace a241f85839474b30b9f1c73fb31f17a5 with YOUR KV ID
+# Get from: Cloudflare Dashboard → KV → cloudbrain → Copy Namespace ID
+# ============================================================================
+[[kv_namespaces]]
+binding = "SECRETS"
+id = "a241f85839474b30b9f1c73fb31f17a5"
+preview_id = "a241f85839474b30b9f1c73fb31f17a5"
+
+# ============================================================================
+# BINDING 2: D1 Database (DB)
+# Stores memories and conversation history
+#
+# ⚠️  CHANGE THIS: Replace 6733f0a4-5412-4c1c-959d-3edfc621e020 with YOUR D1 ID
+# Get from: Cloudflare Dashboard → Databases → cloudbrain → Copy Database ID
+# ============================================================================
+[[d1_databases]]
+binding = "DB"
+database_name = "cloudbrain"
+database_id = "6733f0a4-5412-4c1c-959d-3edfc621e020"
+
+# ============================================================================
+# BINDING 3: Workers AI (AI)
+# Provides access to Llama 2 model for natural language processing
+# (This binding is auto-available in Cloudflare - no setup needed)
+# ============================================================================
 [ai]
 binding = "AI"
 

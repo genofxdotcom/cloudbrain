@@ -89,37 +89,51 @@ cp .env.example .env.local
 
 ## Configuration
 
-### Cloudflare Bindings (REQUIRED - All 3 Must Be Configured)
+### ⚠️ CRITICAL: Cloudflare Bindings Setup (REQUIRED)
 
-CloudBrain requires 3 Cloudflare bindings. Configure all of them in Cloudflare Dashboard.
+**IMPORTANT: You MUST update the binding IDs in `wrangler.toml` or deployment will FAIL!**
 
-#### 1. SECRETS (KV Namespace)
-- **Purpose**: Stores all channel credentials
-- **KV Namespace Name**: `cloudbrain`
-- **Binding Variable Name**: `SECRETS`
-- **Setup**:
-  ```bash
-  wrangler kv:namespace create "cloudbrain"
-  wrangler kv:namespace create "cloudbrain" --preview
-  ```
-- **Bind in Dashboard**: Workers → CloudBrain → Settings → Bindings → Add KV Namespace
+CloudBrain requires 3 Cloudflare bindings configured in `wrangler.toml`. The IDs must be updated with YOUR Cloudflare account resources.
 
-#### 2. DB (D1 Database)
-- **Purpose**: Stores memories and conversation history
-- **Database Name**: `cloudbrain`
-- **Binding Variable Name**: `DB`
-- **Setup**:
-  ```bash
-  wrangler d1 create cloudbrain
-  wrangler d1 create cloudbrain --preview
-  ```
-- **Bind in Dashboard**: Workers → CloudBrain → Settings → Bindings → Add D1 Database
+#### Setup Steps (MUST DO THIS):
 
-#### 3. AI (AI Gateway)
-- **Purpose**: Provides Llama 2 model access
-- **Binding Variable Name**: `AI`
-- **Setup**: Already available in Cloudflare
-- **Bind in Dashboard**: Workers → CloudBrain → Settings → Bindings → Add AI
+1. **Create KV Namespace**
+   ```bash
+   wrangler kv:namespace create "cloudbrain"
+   ```
+   - Copy the Namespace ID (looks like: `a241f85839474b30b9f1c73fb31f17a5`)
+
+2. **Create D1 Database**
+   ```bash
+   wrangler d1 create cloudbrain
+   ```
+   - Copy the Database ID (looks like: `6733f0a4-5412-4c1c-959d-3edfc621e020`)
+
+3. **Update wrangler.toml with YOUR IDs**
+   ```toml
+   # BINDING 1: Replace a241f85839474b30b9f1c73fb31f17a5 with YOUR KV ID
+   [[kv_namespaces]]
+   binding = "SECRETS"
+   id = "YOUR_KV_NAMESPACE_ID"
+   preview_id = "YOUR_KV_NAMESPACE_ID"
+
+   # BINDING 2: Replace 6733f0a4-5412-4c1c-959d-3edfc621e020 with YOUR D1 ID
+   [[d1_databases]]
+   binding = "DB"
+   database_name = "cloudbrain"
+   database_id = "YOUR_D1_DATABASE_ID"
+   ```
+
+4. **Deploy**
+   ```bash
+   wrangler deploy
+   ```
+
+#### Bindings Reference
+
+- **SECRETS (KV Namespace)**: Stores all channel credentials (Telegram, Discord, WhatsApp tokens)
+- **DB (D1 Database)**: Stores memories and conversation history
+- **AI (Workers AI)**: Provides Llama 2 model access (auto-available, no setup needed)
 
 ---
 

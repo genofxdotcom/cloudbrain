@@ -30,7 +30,7 @@ let pollingState: PollingState = {
 export async function startPolling(credentials: Record<string, string>): Promise<void> {
   console.log('🔄 Starting Telegram polling...');
   
-  const token = credentials.SECRET_TELEGRAM_API_TOKEN;
+  const token = credentials.TELEGRAM_API_TOKEN;
   const ownerId = credentials.TELEGRAM_OWNER_ID;
   
   if (!token || !ownerId) {

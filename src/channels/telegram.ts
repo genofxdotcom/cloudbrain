@@ -140,10 +140,9 @@ export class TelegramChannel extends BaseChannel {
     try {
       logger.debug('TELEGRAM', 'Sending message', { userId, textLength: text.length });
 
-      const result = await (this.bot as any).api.sendMessage({
-        chat_id: parseInt(userId),
-        text,
-      });
+      // Use the correct API from @codebam/cf-workers-telegram-bot
+      // The bot instance has a sendMessage method directly
+      const result = await (this.bot as any).sendMessage(parseInt(userId), text);
 
       if (result && result.message_id) {
         logger.info('TELEGRAM', 'Message sent successfully', {
@@ -179,11 +178,8 @@ export class TelegramChannel extends BaseChannel {
     try {
       logger.debug('TELEGRAM', 'Sending file', { userId, fileUrl, hasCaption: !!caption });
 
-      const result = await (this.bot as any).api.sendDocument({
-        chat_id: parseInt(userId),
-        document: fileUrl,
-        caption,
-      });
+      // Use the correct API from @codebam/cf-workers-telegram-bot
+      const result = await (this.bot as any).sendDocument(parseInt(userId), fileUrl, { caption });
 
       if (result && result.message_id) {
         logger.info('TELEGRAM', 'File sent successfully', {

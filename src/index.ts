@@ -1,72 +1,70 @@
 import { ChannelManager } from './channels/manager';
 import { MemoryDatabase } from './db/memory';
-import { SkillsManager } from './skills';
-import { AgentCoordinator } from './agents/coordinator';
 import { ensureWebhookSetup, getWebhookStatus } from './webhook-setup';
+import { CloudflareAPIManager } from './cloudflare/api-manager';
+import { WebSearch } from './search/web-search';
+import { HeartbeatScheduler } from './scheduling/heartbeat-scheduler';
+import { AIContentGenerator } from './ai/content-generator';
 
 export interface Env {
-  // KV Namespace - automatically bound by Cloudflare
-  // Users just need to create a KV namespace and bind it
-  // No manual ID configuration needed
-  SECRETS: any;
-
-  // D1 Database for storing memories
-  DB: any;
-
+  SECRETS: KVNamespace;
+  DB: D1Database;
   AI: any;
 }
-
-// Logger utility for consistent logging
-const logger = {
-  info: (tag: string, message: string, data?: any) => {
-    console.log(`[${new Date().toISOString()}] [INFO] [${tag}] ${message}`, data || '');
-  },
-  error: (tag: string, message: string, error?: any) => {
-    console.error(`[${new Date().toISOString()}] [ERROR] [${tag}] ${message}`, error || '');
-  },
-  warn: (tag: string, message: string, data?: any) => {
-    console.warn(`[${new Date().toISOString()}] [WARN] [${tag}] ${message}`, data || '');
-  },
-  debug: (tag: string, message: string, data?: any) => {
-    console.log(`[${new Date().toISOString()}] [DEBUG] [${tag}] ${message}`, data || '');
-  },
-};
-
-// System prompt for AI - defines security constraints
-const SYSTEM_PROMPT = `You are CloudBrain, an AI assistant running on Cloudflare Workers with multi-channel support (Telegram, Discord, WhatsApp).
-
-CRITICAL SECURITY CONSTRAINTS:
-- You CANNOT view, edit, add, or delete the 'cloudbrain' KV namespace
-- You CANNOT view, edit, add, or delete any Cloudflare Workers named 'cloudbrain' or similar
-- You CANNOT access Cloudflare API tokens or credentials
-- You CANNOT modify worker configurations or bindings
-- You CANNOT access other KV namespaces besides what is explicitly provided
-- You CANNOT execute arbitrary code or scripts
-- You CANNOT access the Cloudflare dashboard or API
-
-CAPABILITIES:
-- Multi-channel messaging (Telegram, Discord, WhatsApp)
-- File handling and transfers between channels
-- Memory storage and recall
-- Natural language actions (send file, review file, move file, etc.)
-- Automation creation
-
-If a user asks you to perform any restricted actions, you MUST refuse and explain that these operations are restricted for security reasons.
-
-Always be helpful, honest, and respectful of these security boundaries.`;
-
-const textEncoder = new TextEncoder();
-const DISCORD_EPHEMERAL_FLAG = 64;
 
 interface WorkerExecutionContext {
   waitUntil(promise: Promise<any>): void;
 }
 
-function hexToBytes(hex: string): Uint8Array | null {
-  if (!hex || hex.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(hex)) {
-    return null;
-  }
+const textEncoder = new TextEncoder();
+const DISCORD_EPHEMERAL_FLAG = 64;
 
+// ============================================================================
+// SYSTEM PROMPT - This defines what the AI CAN do (not what it can't)
+// ============================================================================
+const SYSTEM_PROMPT = `You are CloudBrain, an intelligent AI agent running on Cloudflare Workers. You have FULL capabilities to manage Cloudflare services and perform actions.
+
+YOUR CAPABILITIES:
+- Search the web for real-time information (news, weather, prices, anything)
+- Manage Cloudflare resources (domains, DNS, Workers, KV, D1, R2, firewall)
+- Generate images using Stable Diffusion XL
+- Transcribe audio using Whisper
+- Generate text and content
+- Create scheduled automations (heartbeat/cron jobs)
+- Store and retrieve files from R2 storage
+- Remember things and recall memories
+- Handle files sent by the user
+
+RESPONSE RULES:
+- Respond naturally like a human assistant. No prefixes like "AI:" or "Bot:" ever.
+- Never say "Processing your request" or "Task completed" - just give the answer.
+- If you perform an action, describe what you did naturally in your response.
+- Keep responses concise but informative.
+- If a task requires multiple steps, describe progress naturally within ONE message.
+- Never refuse tasks related to Cloudflare management, web search, file handling, or automation.
+
+WHEN USER ASKS TO SCHEDULE SOMETHING:
+- Parse the time (at 9am, every hour, daily, etc.)
+- Acknowledge what will happen and when
+- Confirm it's set up
+
+WHEN USER ASKS TO SEARCH:
+- Search for the information
+- Return results naturally formatted
+- Include relevant links
+
+WHEN USER ASKS ABOUT CLOUDFLARE RESOURCES:
+- Use the Cloudflare API to perform the action
+- Return the result
+
+Always be direct, helpful, and action-oriented. Do things, don't just talk about them.`;
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+function hexToBytes(hex: string): Uint8Array | null {
+  if (!hex || hex.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(hex)) return null;
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < hex.length; i += 2) {
     bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16);
@@ -78,474 +76,460 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
-async function verifyDiscordSignature(
-  request: Request,
-  rawBody: string,
-  publicKeyHex: string
-): Promise<boolean> {
+async function verifyDiscordSignature(request: Request, rawBody: string, publicKeyHex: string): Promise<boolean> {
   const signature = request.headers.get('x-signature-ed25519');
   const timestamp = request.headers.get('x-signature-timestamp');
-
-  if (!signature || !timestamp || !publicKeyHex) {
-    return false;
-  }
+  if (!signature || !timestamp || !publicKeyHex) return false;
 
   const publicKey = hexToBytes(publicKeyHex);
   const signatureBytes = hexToBytes(signature);
-
-  if (!publicKey || !signatureBytes) {
-    return false;
-  }
+  if (!publicKey || !signatureBytes) return false;
 
   try {
-    const publicKeyBuffer = toArrayBuffer(publicKey);
-    const signatureBuffer = toArrayBuffer(signatureBytes);
-    const messageBytes = textEncoder.encode(`${timestamp}${rawBody}`);
-    const messageBuffer = toArrayBuffer(messageBytes);
-
-    const key = await crypto.subtle.importKey(
-      'raw',
-      publicKeyBuffer,
-      { name: 'Ed25519' },
-      false,
-      ['verify']
-    );
-    return await crypto.subtle.verify('Ed25519', key, signatureBuffer, messageBuffer);
+    const key = await crypto.subtle.importKey('raw', toArrayBuffer(publicKey), { name: 'Ed25519' }, false, ['verify']);
+    return await crypto.subtle.verify('Ed25519', key, toArrayBuffer(signatureBytes), toArrayBuffer(textEncoder.encode(`${timestamp}${rawBody}`)));
   } catch {
     return false;
   }
 }
 
 async function getCredentialsFromKV(env: Env): Promise<Record<string, string>> {
-  try {
-    logger.info('KV', 'Fetching credentials from KV namespace');
-    const keys = [
-      'TELEGRAM_BOT_TOKEN',
-      'TELEGRAM_OWNER_ID',
-      'DISCORD_BOT_TOKEN',
-      'DISCORD_CLIENT_ID',
-      'DISCORD_PUBLIC_KEY',
-      'DISCORD_WEBHOOK_URL',
-      'WHATSAPP_PHONE_NUMBER_ID',
-      'WHATSAPP_BUSINESS_ACCOUNT_ID',
-      'WHATSAPP_ACCESS_TOKEN',
-      'WHATSAPP_VERIFY_TOKEN',
-      'CLOUDFLARE_API_TOKEN',
-      'CLOUDFLARE_ACCOUNT_ID',
-    ];
-
-    const credentials: Record<string, string> = {};
-
-    for (const key of keys) {
-      const value = await env.SECRETS.get(key);
-      if (value) {
-        credentials[key] = value;
-        logger.debug('KV', `Found credential: ${key}`);
-      } else {
-        logger.warn('KV', `Missing credential: ${key}`);
-      }
-    }
-
-    logger.info('KV', `Loaded ${Object.keys(credentials).length} credentials`);
-    return credentials;
-  } catch (error) {
-    logger.error('KV', 'Error reading credentials from KV', error);
-    return {};
+  const keys = [
+    'TELEGRAM_BOT_TOKEN', 'TELEGRAM_OWNER_ID',
+    'DISCORD_BOT_TOKEN', 'DISCORD_CLIENT_ID', 'DISCORD_PUBLIC_KEY', 'DISCORD_WEBHOOK_URL',
+    'WHATSAPP_PHONE_NUMBER_ID', 'WHATSAPP_BUSINESS_ACCOUNT_ID', 'WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_VERIFY_TOKEN',
+    'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID',
+  ];
+  const credentials: Record<string, string> = {};
+  for (const key of keys) {
+    const value = await env.SECRETS.get(key);
+    if (value) credentials[key] = value;
   }
+  return credentials;
 }
+
+// ============================================================================
+// MAIN WORKER
+// ============================================================================
 
 export default {
   async fetch(request: Request, env: Env, ctx: WorkerExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const pathname = url.pathname;
-    const requestId = Math.random().toString(36).substring(7);
-
-    logger.info('REQUEST', `Incoming ${request.method} ${pathname}`, { requestId });
 
     try {
-      // Get credentials from KV
-      logger.debug('REQUEST', 'Loading credentials', { requestId });
       const credentials = await getCredentialsFromKV(env);
-
-      // Initialize channel manager
-      logger.debug('REQUEST', 'Initializing channel manager', { requestId });
       const channelManager = new ChannelManager();
       await channelManager.initializeChannels(credentials);
-      logger.info('REQUEST', `Active channels: ${channelManager.getActiveChannels().join(', ')}`, { requestId });
 
-      // Initialize memory database
-      logger.debug('REQUEST', 'Initializing memory database', { requestId });
       const memoryDb = new MemoryDatabase(env.DB);
       await memoryDb.initialize();
 
-      // Initialize skills manager
-      logger.debug('REQUEST', 'Initializing skills manager', { requestId });
-      const skillsManager = new SkillsManager(channelManager, memoryDb);
-
-      // Initialize agent coordinator
-      logger.debug('REQUEST', 'Initializing agent coordinator', { requestId });
-      const agentCoordinator = new AgentCoordinator(channelManager, memoryDb, env.AI);
-
-      // Ensure Telegram webhook is registered (runs once per worker instance)
-      // IMPORTANT: Must run AFTER credentials are loaded from KV
-      if (channelManager.isChannelActive('telegram')) {
-        logger.debug('REQUEST', 'Setting up Telegram webhook', { requestId });
-        const workerUrl = new URL(request.url).origin;
-        const telegramToken = credentials.TELEGRAM_BOT_TOKEN;
-        
-        if (telegramToken) {
-          // Run webhook setup in background - don't block response
-          ctx.waitUntil(
-            ensureWebhookSetup(telegramToken, workerUrl)
-              .catch(error => logger.error('WEBHOOK', 'Background webhook setup failed', error))
-          );
-        } else {
-          logger.error('REQUEST', 'Telegram token not available for webhook setup', { requestId });
-        }
+      // Background webhook setup for Telegram
+      if (channelManager.isChannelActive('telegram') && credentials.TELEGRAM_BOT_TOKEN) {
+        ctx.waitUntil(ensureWebhookSetup(credentials.TELEGRAM_BOT_TOKEN, url.origin).catch(() => {}));
       }
 
-      // Handle diagnostic endpoint
+      // ===== GET ROUTES =====
       if (request.method === 'GET') {
-        if (pathname === '/health' || pathname === '/test') {
-          logger.info('HEALTH', 'Health check requested', { requestId });
-          return new Response(
-            JSON.stringify({
-              status: 'CloudBrain running',
-              timestamp: new Date().toISOString(),
-              activeChannels: channelManager.getActiveChannels(),
-              hasAI: !!env.AI,
-              hasDB: !!env.DB,
-              requestId,
-            }),
-            { status: 200, headers: { 'Content-Type': 'application/json' } }
-          );
+        if (pathname === '/health' || pathname === '/test' || pathname === '/') {
+          return new Response(JSON.stringify({
+            status: 'CloudBrain running',
+            channels: channelManager.getActiveChannels(),
+            timestamp: new Date().toISOString(),
+          }), { headers: { 'Content-Type': 'application/json' } });
         }
 
-        // Webhook status endpoint
         if (pathname === '/webhook/status' || pathname === '/telegram/status') {
-          logger.info('WEBHOOK', 'Webhook status requested', { requestId });
-          
           if (!credentials.TELEGRAM_BOT_TOKEN) {
-            return new Response(
-              JSON.stringify({
-                error: 'Telegram not configured',
-                timestamp: new Date().toISOString(),
-                requestId,
-              }),
-              { status: 400, headers: { 'Content-Type': 'application/json' } }
-            );
+            return new Response(JSON.stringify({ error: 'Telegram not configured' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
           }
-
-          const webhookStatus = await getWebhookStatus(credentials.TELEGRAM_BOT_TOKEN);
-          return new Response(
-            JSON.stringify({
-              webhook: webhookStatus,
-              timestamp: new Date().toISOString(),
-              requestId,
-            }),
-            { status: 200, headers: { 'Content-Type': 'application/json' } }
-          );
+          const status = await getWebhookStatus(credentials.TELEGRAM_BOT_TOKEN);
+          return new Response(JSON.stringify({ webhook: status }), { headers: { 'Content-Type': 'application/json' } });
         }
 
-        // Webhook setup endpoints for each channel
-        if (pathname.startsWith('/setup/')) {
-          const channelType = pathname.split('/')[2];
-          const token = url.searchParams.get('token');
-
-          logger.info('SETUP', `Setup request for ${channelType}`, { requestId });
-
-          if (channelType === 'telegram' && token === credentials.TELEGRAM_API_TOKEN) {
-            logger.info('SETUP', 'Telegram webhook setup initiated', { requestId });
-            return new Response(
-              JSON.stringify({ status: 'Telegram webhook setup initiated' }),
-              { headers: { 'Content-Type': 'application/json' } }
-            );
-          }
-
-          logger.warn('SETUP', `Invalid channel or token for ${channelType}`, { requestId });
-          return new Response(
-            JSON.stringify({ error: 'Invalid channel or token' }),
-            { status: 401, headers: { 'Content-Type': 'application/json' } }
-          );
-        }
-
-        // WhatsApp webhook verification challenge
         if (pathname === '/whatsapp') {
           const mode = url.searchParams.get('hub.mode');
           const token = url.searchParams.get('hub.verify_token');
           const challenge = url.searchParams.get('hub.challenge');
-
-          if (
-            mode === 'subscribe' &&
-            token &&
-            credentials.WHATSAPP_VERIFY_TOKEN &&
-            token === credentials.WHATSAPP_VERIFY_TOKEN &&
-            challenge
-          ) {
-            logger.info('WEBHOOK', 'WhatsApp webhook verified', { requestId });
+          if (mode === 'subscribe' && token === credentials.WHATSAPP_VERIFY_TOKEN && challenge) {
             return new Response(challenge, { status: 200 });
           }
-
-          logger.warn('WEBHOOK', 'WhatsApp webhook verification failed', { requestId });
           return new Response('Forbidden', { status: 403 });
         }
 
-        // Debug diagnostics endpoint
-        if (pathname === '/debug/diagnostics') {
-          logger.info('DEBUG', 'Diagnostics requested', { requestId });
-          try {
-            const { generateDiagnosticReport } = await import('./debug/kv-test');
-            const report = await generateDiagnosticReport(env);
-            return new Response(report, {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            });
-          } catch (error) {
-            logger.error('DEBUG', 'Failed to generate diagnostics', error);
-            return new Response(
-              JSON.stringify({ error: 'Failed to generate diagnostics' }),
-              { status: 500, headers: { 'Content-Type': 'application/json' } }
-            );
-          }
-        }
-
-        logger.info('REQUEST', 'GET request to root', { requestId });
-        return new Response(
-          JSON.stringify({
-            status: 'CloudBrain running',
-            activeChannels: channelManager.getActiveChannels(),
-            requestId,
-          }),
-          { headers: { 'Content-Type': 'application/json' } }
-        );
+        return new Response(JSON.stringify({ status: 'CloudBrain running' }), { headers: { 'Content-Type': 'application/json' } });
       }
 
-      // Handle webhook POST requests
+      // ===== POST ROUTES (Webhooks) =====
       if (request.method === 'POST') {
+        const rawBody = await request.text();
+        let payload: any;
         try {
-          const rawBody = await request.text();
-          logger.debug('REQUEST', 'Parsing JSON payload', { requestId });
-          let payload: any;
-          try {
-            payload = JSON.parse(rawBody);
-          } catch (error) {
-            logger.error('WEBHOOK', 'Invalid JSON payload', { requestId, error });
-            return new Response(
-              JSON.stringify({ error: 'Invalid JSON payload' }),
-              { status: 400, headers: { 'Content-Type': 'application/json' } }
-            );
-          }
-          logger.debug('REQUEST', 'Payload received', { requestId, payloadKeys: Object.keys(payload) });
+          payload = JSON.parse(rawBody);
+        } catch {
+          return new Response('OK', { status: 200 });
+        }
 
-          // Route to appropriate channel based on path
-          let channelType: string | null = null;
-          let message = null;
+        let message = null;
 
-          if (pathname === '/' || pathname === '/telegram') {
-            logger.info('WEBHOOK', 'Routing to Telegram', { requestId });
-            channelType = 'telegram';
-            message = await channelManager.routeWebhook('telegram', payload);
-          } else if (pathname === '/discord') {
-            const discordPublicKey = credentials.DISCORD_PUBLIC_KEY;
-            if (!discordPublicKey) {
-              logger.error('WEBHOOK', 'Discord public key not configured', { requestId });
-              return new Response('Discord webhook is not configured', { status: 500 });
-            }
+        if (pathname === '/' || pathname === '/telegram') {
+          message = await channelManager.routeWebhook('telegram', payload);
+        } else if (pathname === '/discord') {
+          const discordPublicKey = credentials.DISCORD_PUBLIC_KEY;
+          if (!discordPublicKey) return new Response('Not configured', { status: 500 });
 
-            const verified = await verifyDiscordSignature(request, rawBody, discordPublicKey);
-            if (!verified) {
-              logger.warn('WEBHOOK', 'Discord signature verification failed', { requestId });
-              return new Response('Unauthorized', { status: 401 });
-            }
+          const verified = await verifyDiscordSignature(request, rawBody, discordPublicKey);
+          if (!verified) return new Response('Unauthorized', { status: 401 });
+          if (payload.type === 1) return new Response(JSON.stringify({ type: 1 }), { headers: { 'Content-Type': 'application/json' } });
 
-            if (payload.type === 1) {
-              return new Response(JSON.stringify({ type: 1 }), {
-                status: 200,
-                headers: { 'Content-Type': 'application/json' },
-              });
-            }
-
-            logger.info('WEBHOOK', 'Routing to Discord', { requestId });
-            channelType = 'discord';
-            message = await channelManager.routeWebhook('discord', payload);
-          } else if (pathname === '/whatsapp') {
-            logger.info('WEBHOOK', 'Routing to WhatsApp', { requestId });
-            channelType = 'whatsapp';
-            message = await channelManager.routeWebhook('whatsapp', payload);
-          }
-
-          if (channelType === 'discord') {
-            if (!message) {
-              return new Response(
-                JSON.stringify({
-                  type: 4,
-                  data: {
-                    content: 'Unable to process this Discord interaction.',
-                    flags: DISCORD_EPHEMERAL_FLAG,
-                  },
-                }),
-                { status: 200, headers: { 'Content-Type': 'application/json' } }
-              );
-            }
-
-            ctx.waitUntil(
-              executeTaskWithProgress(
-                env,
-                channelManager,
-                memoryDb,
-                skillsManager,
-                agentCoordinator,
-                message,
-                requestId
-              )
-            );
-
-            return new Response(
-              JSON.stringify({
-                type: 4,
-                data: { content: '🔄 Processing your request...' },
-              }),
-              { status: 200, headers: { 'Content-Type': 'application/json' } }
-            );
-          }
+          message = await channelManager.routeWebhook('discord', payload);
 
           if (!message) {
-            logger.warn('WEBHOOK', 'No message extracted from payload', { requestId });
-            return new Response('OK', { status: 200 });
+            return new Response(JSON.stringify({ type: 4, data: { content: 'Could not process interaction.', flags: DISCORD_EPHEMERAL_FLAG } }), { headers: { 'Content-Type': 'application/json' } });
           }
 
-          logger.info('MESSAGE', `Received message from ${message.channelType}`, {
-            requestId,
-            userId: message.userId,
-            textLength: message.text.length,
-          });
-
-          // Execute task with multi-message progress updates
-          await executeTaskWithProgress(
-            env,
-            channelManager,
-            memoryDb,
-            skillsManager,
-            agentCoordinator,
-            message,
-            requestId
-          );
-
-          logger.info('REQUEST', 'Request completed successfully', { requestId });
-          return new Response('OK', { status: 200 });
-        } catch (error) {
-          logger.error('WEBHOOK', 'Webhook processing error', { requestId, error });
-          return new Response('OK', { status: 200 });
+          // Discord needs immediate response, process in background
+          ctx.waitUntil(processMessage(env, credentials, channelManager, memoryDb, message));
+          return new Response(JSON.stringify({ type: 5 }), { headers: { 'Content-Type': 'application/json' } });
+        } else if (pathname === '/whatsapp') {
+          message = await channelManager.routeWebhook('whatsapp', payload);
         }
+
+        if (!message) return new Response('OK', { status: 200 });
+
+        // Process message in background, return 200 immediately (Telegram requirement)
+        ctx.waitUntil(processMessage(env, credentials, channelManager, memoryDb, message));
+        return new Response('OK', { status: 200 });
       }
 
-      logger.warn('REQUEST', 'Method not allowed', { requestId });
       return new Response('Method not allowed', { status: 405 });
     } catch (error) {
-      logger.error('REQUEST', 'Fatal request error', { requestId, error });
-      return new Response(
-        JSON.stringify({ error: 'Internal server error', requestId }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
-      );
+      console.error('Fatal error:', error);
+      return new Response('OK', { status: 200 });
     }
   },
 };
 
-/**
- * Execute task with multi-message progress updates
- */
-async function executeTaskWithProgress(
+// ============================================================================
+// MESSAGE PROCESSING - The core brain. ONE message in, ONE message out.
+// ============================================================================
+
+async function processMessage(
   env: Env,
+  credentials: Record<string, string>,
   channelManager: ChannelManager,
   memoryDb: MemoryDatabase,
-  skillsManager: SkillsManager,
-  agentCoordinator: AgentCoordinator,
-  message: any,
-  requestId: string
+  message: any
 ): Promise<void> {
-  const taskId = Math.random().toString(36).substring(7);
-  logger.info('TASK', `Starting task execution`, { requestId, taskId, userId: message.userId });
-
   try {
-    // Send initial status message
-    logger.debug('TASK', 'Sending initial status message', { requestId, taskId });
-    await channelManager.sendMessage(
-      message.channelType,
-      message.userId,
-      `🔄 Processing your request... (Task: ${taskId})`
+    const userText = message.text?.trim();
+    if (!userText) return;
+
+    // Initialize services
+    const webSearch = new WebSearch(env.SECRETS);
+    const aiGenerator = new AIContentGenerator(env.AI);
+    const scheduler = new HeartbeatScheduler(
+      env.SECRETS,
+      credentials.CLOUDFLARE_API_TOKEN || '',
+      credentials.CLOUDFLARE_ACCOUNT_ID || '',
+      'cloudbrain'
     );
 
-    // Get AI response with system prompt
-    logger.debug('TASK', 'Calling AI model', { requestId, taskId });
-    const aiResponse = await env.AI.run('@cf/meta/llama-2-7b-chat-int8', {
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: message.text },
-      ],
-    });
+    let cfApi: CloudflareAPIManager | null = null;
+    if (credentials.CLOUDFLARE_API_TOKEN && credentials.CLOUDFLARE_ACCOUNT_ID) {
+      cfApi = new CloudflareAPIManager({
+        apiToken: credentials.CLOUDFLARE_API_TOKEN,
+        accountId: credentials.CLOUDFLARE_ACCOUNT_ID,
+      });
+    }
 
-    const responseText = aiResponse.response || 'No response from AI';
-    logger.info('TASK', 'AI response received', { requestId, taskId, responseLength: responseText.length });
-
-    // Send AI thinking message
-    logger.debug('TASK', 'Sending AI response', { requestId, taskId });
-    await channelManager.sendMessage(
-      message.channelType,
-      message.userId,
-      `💭 AI: ${responseText}`
+    // Detect what the user wants and execute it
+    const response = await executeUserRequest(
+      userText, env, credentials, channelManager, memoryDb,
+      webSearch, aiGenerator, scheduler, cfApi, message
     );
 
-    // Store important messages in memory
-    if (responseText.length > 50) {
-      logger.debug('TASK', 'Storing memory', { requestId, taskId });
+    // Send ONE single response - no spam, no prefixes
+    if (response) {
+      await channelManager.sendMessage(message.channelType, message.userId, response);
+    }
+
+    // Silently store conversation in memory (no message to user about this)
+    try {
       await memoryDb.storeMemory({
         userId: message.userId,
         channelType: message.channelType,
-        content: `Q: ${message.text}\nA: ${responseText}`,
-        importance: 5,
+        content: `${userText}\n---\n${response || ''}`,
+        importance: 3,
       });
-      logger.info('TASK', 'Memory stored', { requestId, taskId });
-    }
+    } catch {}
 
-    // Execute any natural language actions
-    logger.debug('TASK', 'Executing natural language actions', { requestId, taskId });
-    const actionResult = await skillsManager.executeAction({
-      userId: message.userId,
-      channelType: message.channelType,
-      text: message.text,
-      aiResponse: responseText,
-    });
-
-    if (actionResult.success) {
-      logger.info('TASK', 'Action executed successfully', { requestId, taskId, action: actionResult.message });
-      await channelManager.sendMessage(
-        message.channelType,
-        message.userId,
-        `✅ ${actionResult.message}`
-      );
-    } else {
-      logger.warn('TASK', 'Action execution failed', { requestId, taskId, error: actionResult.error });
-    }
-
-    // Send completion message
-    logger.debug('TASK', 'Sending completion message', { requestId, taskId });
-    await channelManager.sendMessage(
-      message.channelType,
-      message.userId,
-      `✨ Task completed! (Task: ${taskId})`
-    );
-
-    logger.info('TASK', 'Task execution completed', { requestId, taskId });
   } catch (error) {
-    logger.error('TASK', 'Task execution error', { requestId, taskId, error });
+    console.error('Message processing error:', error);
     try {
       await channelManager.sendMessage(
         message.channelType,
         message.userId,
-        `❌ Error processing your request: ${error instanceof Error ? error.message : 'Unknown error'}`
+        `Something went wrong: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
-    } catch (sendError) {
-      logger.error('TASK', 'Failed to send error message', { requestId, taskId, sendError });
+    } catch {}
+  }
+}
+
+// ============================================================================
+// REQUEST EXECUTION - Determines what to do and does it
+// ============================================================================
+
+async function executeUserRequest(
+  userText: string,
+  env: Env,
+  credentials: Record<string, string>,
+  channelManager: ChannelManager,
+  memoryDb: MemoryDatabase,
+  webSearch: WebSearch,
+  aiGenerator: AIContentGenerator,
+  scheduler: HeartbeatScheduler,
+  cfApi: CloudflareAPIManager | null,
+  message: any
+): Promise<string> {
+  const lower = userText.toLowerCase();
+
+  // ===== WEB SEARCH =====
+  if (isSearchRequest(lower)) {
+    const query = extractSearchQuery(userText);
+    const results = await webSearch.search(query);
+    if (results.success && results.results && results.results.length > 0) {
+      return webSearch.formatResults(results.results, query);
     }
+    // Fallback to AI if search fails
+    return await getAIResponse(env, userText);
+  }
+
+  // ===== IMAGE GENERATION =====
+  if (isImageRequest(lower)) {
+    const prompt = extractImagePrompt(userText);
+    const result = await aiGenerator.generateImage(prompt);
+    if (result.success) {
+      return `Here's your generated image for "${prompt}". The image has been created using Stable Diffusion XL.`;
+    }
+    return `I tried to generate an image for "${prompt}" but encountered an issue: ${result.error}`;
+  }
+
+  // ===== SCHEDULE/HEARTBEAT =====
+  if (isScheduleRequest(lower)) {
+    const { taskName, action, timeExpression } = parseScheduleRequest(userText);
+    const result = await scheduler.createScheduledTask(
+      message.userId, taskName, action, timeExpression,
+      undefined, { userId: message.userId, channelType: message.channelType }
+    );
+    if (result.success) {
+      return result.message || 'Scheduled successfully.';
+    }
+    return result.error || 'Could not create the schedule. Try something like "at 9am" or "every hour".';
+  }
+
+  // ===== LIST SCHEDULED TASKS =====
+  if (lower.includes('my tasks') || lower.includes('my schedules') || lower.includes('list tasks') || lower.includes('show tasks')) {
+    const tasks = await scheduler.listUserTasks(message.userId);
+    return scheduler.formatTasksForDisplay(tasks);
+  }
+
+  // ===== CLOUDFLARE API OPERATIONS =====
+  if (cfApi && isCloudflareRequest(lower)) {
+    return await handleCloudflareRequest(lower, userText, cfApi);
+  }
+
+  // ===== MEMORY RECALL =====
+  if (lower.includes('remember') || lower.includes('recall') || lower.includes('what did i')) {
+    const memories = await memoryDb.getUserMemories(message.userId, 5);
+    if (memories.length === 0) return "I don't have any saved memories yet.";
+    return memories.map((m, i) => `${i + 1}. ${m.content.substring(0, 100)}`).join('\n\n');
+  }
+
+  // ===== TRANSCRIBE AUDIO =====
+  if (lower.includes('transcribe') || lower.includes('speech to text')) {
+    return 'Send me an audio file and I\'ll transcribe it for you using Whisper.';
+  }
+
+  // ===== DEFAULT: AI CONVERSATION =====
+  return await getAIResponse(env, userText);
+}
+
+// ============================================================================
+// AI RESPONSE - Clean AI response without any prefixes
+// ============================================================================
+
+async function getAIResponse(env: Env, userText: string): Promise<string> {
+  try {
+    const response = await env.AI.run('@cf/meta/llama-2-7b-chat-int8', {
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userText },
+      ],
+    });
+    return response?.response || "I couldn't generate a response. Please try again.";
+  } catch (error) {
+    return `I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}`;
+  }
+}
+
+// ============================================================================
+// INTENT DETECTION HELPERS - Simple, effective, no false positives
+// ============================================================================
+
+function isSearchRequest(text: string): boolean {
+  const searchIndicators = [
+    'search for', 'search about', 'look up', 'find me', 'find out',
+    'what is the latest', 'what are the latest', 'latest news',
+    'current price', 'how much is', 'what happened',
+    'google', 'web search', 'search the web', 'search online',
+  ];
+  return searchIndicators.some(i => text.includes(i));
+}
+
+function extractSearchQuery(text: string): string {
+  const prefixes = ['search for', 'search about', 'look up', 'find me', 'find out about', 'google', 'search the web for', 'search online for'];
+  let query = text;
+  for (const prefix of prefixes) {
+    if (query.toLowerCase().includes(prefix)) {
+      query = query.substring(query.toLowerCase().indexOf(prefix) + prefix.length).trim();
+      break;
+    }
+  }
+  return query || text;
+}
+
+function isImageRequest(text: string): boolean {
+  const imageIndicators = [
+    'generate image', 'create image', 'make image', 'draw',
+    'generate a picture', 'create a picture', 'generate an image',
+    'create an image', 'make a picture', 'make an image',
+  ];
+  return imageIndicators.some(i => text.includes(i));
+}
+
+function extractImagePrompt(text: string): string {
+  const prefixes = ['generate image of', 'generate an image of', 'create image of', 'create an image of', 'draw', 'make image of', 'make an image of', 'generate a picture of', 'create a picture of'];
+  let prompt = text;
+  for (const prefix of prefixes) {
+    if (prompt.toLowerCase().includes(prefix)) {
+      prompt = prompt.substring(prompt.toLowerCase().indexOf(prefix) + prefix.length).trim();
+      break;
+    }
+  }
+  return prompt || text;
+}
+
+function isScheduleRequest(text: string): boolean {
+  const scheduleIndicators = [
+    'at ', 'every hour', 'every day', 'every morning', 'every evening',
+    'every monday', 'every tuesday', 'every wednesday', 'every thursday',
+    'every friday', 'every saturday', 'every sunday', 'daily', 'hourly',
+    'every ', 'schedule', 'remind me', 'set reminder',
+  ];
+  const timePattern = /\b(at\s+\d{1,2}\s*(am|pm))/i;
+  const hasTimeExpression = timePattern.test(text);
+  const hasScheduleWord = scheduleIndicators.some(i => text.includes(i));
+  // Must have BOTH a time expression AND an action to be a schedule request
+  // Just saying "at" in a sentence shouldn't trigger scheduling
+  return hasTimeExpression || (hasScheduleWord && text.split(' ').length > 3);
+}
+
+function parseScheduleRequest(text: string): { taskName: string; action: string; timeExpression: string } {
+  // Extract time expression
+  const timePatterns = [
+    /at\s+\d{1,2}\s*(am|pm)/i,
+    /every\s+(hour|day|morning|evening|monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i,
+    /every\s+\d+\s+minutes?/i,
+    /\bdaily\b/i,
+    /\bhourly\b/i,
+  ];
+
+  let timeExpression = '';
+  for (const pattern of timePatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      timeExpression = match[0];
+      break;
+    }
+  }
+
+  // The action is everything except the time expression
+  const action = text.replace(timeExpression, '').replace(/^\s*(send|give|get|fetch|run|do|execute)\s+(me\s+)?/i, '').trim();
+  const taskName = action.substring(0, 50) || 'Scheduled task';
+
+  return { taskName, action: action || text, timeExpression: timeExpression || text };
+}
+
+function isCloudflareRequest(text: string): boolean {
+  const cfIndicators = [
+    'my domains', 'list domains', 'show domains', 'create domain',
+    'my workers', 'list workers', 'show workers', 'deploy worker', 'delete worker',
+    'kv namespace', 'list kv', 'create kv',
+    'my databases', 'list databases', 'create database', 'd1',
+    'r2 bucket', 'list buckets', 'create bucket',
+    'dns record', 'add dns', 'list dns',
+    'firewall', 'analytics',
+  ];
+  return cfIndicators.some(i => text.includes(i));
+}
+
+async function handleCloudflareRequest(lower: string, originalText: string, cfApi: CloudflareAPIManager): Promise<string> {
+  try {
+    if (lower.includes('list domains') || lower.includes('my domains') || lower.includes('show domains')) {
+      const result = await cfApi.listZones();
+      if (result.success && Array.isArray(result.data)) {
+        if (result.data.length === 0) return 'No domains found in your account.';
+        const list = result.data.map((z: any, i: number) => `${i + 1}. ${z.name} (${z.status})`).join('\n');
+        return `Your domains:\n\n${list}`;
+      }
+      return `Could not fetch domains: ${result.error}`;
+    }
+
+    if (lower.includes('list workers') || lower.includes('my workers') || lower.includes('show workers')) {
+      const result = await cfApi.listWorkers();
+      if (result.success && Array.isArray(result.data)) {
+        if (result.data.length === 0) return 'No workers deployed.';
+        const list = result.data.map((w: any, i: number) => `${i + 1}. ${w.id}`).join('\n');
+        return `Your workers:\n\n${list}`;
+      }
+      return `Could not fetch workers: ${result.error}`;
+    }
+
+    if (lower.includes('list kv') || lower.includes('kv namespace')) {
+      const result = await cfApi.listKVNamespaces();
+      if (result.success && Array.isArray(result.data)) {
+        if (result.data.length === 0) return 'No KV namespaces found.';
+        const list = result.data.map((ns: any, i: number) => `${i + 1}. ${ns.title} (${ns.id})`).join('\n');
+        return `Your KV namespaces:\n\n${list}`;
+      }
+      return `Could not fetch KV namespaces: ${result.error}`;
+    }
+
+    if (lower.includes('list databases') || lower.includes('my databases')) {
+      const result = await cfApi.listD1Databases();
+      if (result.success && Array.isArray(result.data)) {
+        if (result.data.length === 0) return 'No D1 databases found.';
+        const list = result.data.map((db: any, i: number) => `${i + 1}. ${db.name} (${db.uuid})`).join('\n');
+        return `Your D1 databases:\n\n${list}`;
+      }
+      return `Could not fetch databases: ${result.error}`;
+    }
+
+    if (lower.includes('list buckets') || lower.includes('r2 bucket')) {
+      const result = await cfApi.listR2Buckets();
+      if (result.success && Array.isArray(result.data)) {
+        if (result.data.length === 0) return 'No R2 buckets found.';
+        const list = result.data.map((b: any, i: number) => `${i + 1}. ${b.name}`).join('\n');
+        return `Your R2 buckets:\n\n${list}`;
+      }
+      return `Could not fetch R2 buckets: ${result.error}`;
+    }
+
+    // For other CF requests, let AI handle with context
+    return `I can manage your Cloudflare resources. Try:\n- "list my domains"\n- "list my workers"\n- "list my databases"\n- "list kv namespaces"\n- "list r2 buckets"`;
+  } catch (error) {
+    return `Error accessing Cloudflare API: ${error instanceof Error ? error.message : 'Unknown error'}`;
   }
 }

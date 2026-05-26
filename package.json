@@ -5,16 +5,13 @@
   "main": "src/index.ts",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy --env production",
-    "deploy:dev": "wrangler deploy --env development",
+    "deploy": "wrangler deploy",
     "type-check": "tsc --noEmit",
     "test": "echo \"no tests yet\""
   },
   "dependencies": {
     "@codebam/cf-workers-telegram-bot": "^9.1.4",
-    "discord.js": "^14.26.4",
-    "hono": "^4.0.0",
-    "whatsapp-web.js": "^1.34.7"
+    "hono": "^4.0.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20231218.0",

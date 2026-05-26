@@ -59,10 +59,25 @@ export class CloudflareAPIManager {
    * Make authenticated API request to Cloudflare
    */
   private async makeRequest<T>(
-    method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
-    path: string,
-    body?: any
+    methodOrPath: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | string,
+    pathOrBody?: string | any,
+    bodyOrUndefined?: any
   ): Promise<ApiResponse<T>> {
+    // Support both: makeRequest('/path') and makeRequest('GET', '/path', body)
+    let method: string;
+    let path: string;
+    let body: any;
+
+    if (methodOrPath.startsWith('/')) {
+      // Called as makeRequest('/path') - default GET
+      method = 'GET';
+      path = methodOrPath;
+      body = undefined;
+    } else {
+      method = methodOrPath;
+      path = pathOrBody as string;
+      body = bodyOrUndefined;
+    }
     try {
       const url = `${this.baseUrl}${path}`;
       const options: RequestInit = {

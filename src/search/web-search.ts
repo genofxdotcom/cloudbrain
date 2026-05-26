@@ -22,7 +22,7 @@ export interface WebSearchResponse {
 }
 
 export interface SearchOptions {
-  query: string;
+  query?: string;
   type?: 'web' | 'news' | 'images' | 'academic';
   limit?: number;
   language?: string;

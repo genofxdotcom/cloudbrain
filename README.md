@@ -15,6 +15,8 @@ A multi-agent AI system that runs on your VPS and manages your entire Cloudflare
 - **Multi-Agent** — Planner decomposes tasks, Executor handles them with progress updates
 - **Permission System** — Asks before destructive operations (approve/always approve/skip)
 
+![Cloudbrain V2](Cloudbrain-v2.png)
+
 ## Requirements
 
 - Node.js 18+

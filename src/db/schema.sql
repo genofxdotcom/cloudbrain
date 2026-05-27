@@ -1,9 +1,5 @@
 -- CloudBrain 2.0 Database Schema
 
-CREATE DATABASE IF NOT EXISTS cloudbrain;
-USE cloudbrain;
-
--- Credentials storage (encrypted)
 CREATE TABLE IF NOT EXISTS credentials (
   id INT AUTO_INCREMENT PRIMARY KEY,
   `key` VARCHAR(100) UNIQUE NOT NULL,
@@ -13,7 +9,6 @@ CREATE TABLE IF NOT EXISTS credentials (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
--- Conversation history
 CREATE TABLE IF NOT EXISTS conversations (
   id INT AUTO_INCREMENT PRIMARY KEY,
   user_id VARCHAR(100) NOT NULL,
@@ -26,7 +21,6 @@ CREATE TABLE IF NOT EXISTS conversations (
   INDEX idx_created (created_at)
 );
 
--- Long-term memory
 CREATE TABLE IF NOT EXISTS memories (
   id INT AUTO_INCREMENT PRIMARY KEY,
   user_id VARCHAR(100) NOT NULL,
@@ -38,7 +32,6 @@ CREATE TABLE IF NOT EXISTS memories (
   INDEX idx_importance (importance DESC)
 );
 
--- Scheduled tasks (heartbeat)
 CREATE TABLE IF NOT EXISTS scheduled_tasks (
   id VARCHAR(50) PRIMARY KEY,
   user_id VARCHAR(100) NOT NULL,
@@ -55,7 +48,6 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
   INDEX idx_active (is_active)
 );
 
--- Task execution log
 CREATE TABLE IF NOT EXISTS task_log (
   id INT AUTO_INCREMENT PRIMARY KEY,
   task_id VARCHAR(50),
@@ -70,16 +62,20 @@ CREATE TABLE IF NOT EXISTS task_log (
   INDEX idx_status (status)
 );
 
--- Agent operations audit
-CREATE TABLE IF NOT EXISTS audit_log (
+CREATE TABLE IF NOT EXISTS system_config (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  user_id VARCHAR(100),
-  operation VARCHAR(100) NOT NULL,
-  resource_type VARCHAR(50),
-  resource_id VARCHAR(200),
-  details JSON,
-  status ENUM('success', 'failed') NOT NULL,
+  `key` VARCHAR(100) UNIQUE NOT NULL,
+  `value` TEXT NOT NULL,
+  description VARCHAR(255),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_user (user_id),
-  INDEX idx_operation (operation)
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS permissions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id VARCHAR(100) NOT NULL,
+  operation VARCHAR(100) NOT NULL,
+  policy ENUM('ask', 'always_approve', 'always_deny') NOT NULL DEFAULT 'ask',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY idx_user_op (user_id, operation)
 );

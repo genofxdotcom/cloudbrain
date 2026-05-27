@@ -1,67 +1,32 @@
-/**
- * Base channel interface for multi-channel support
- * All channel implementations must extend this class
- */
-
-export interface ChannelMessage {
+export interface IncomingMessage {
   id: string;
-  channelType: 'telegram' | 'discord' | 'whatsapp';
   userId: string;
+  channel: 'telegram' | 'discord' | 'whatsapp' | 'cli';
   text: string;
+  hasMedia?: boolean;
+  mediaType?: 'photo' | 'audio' | 'video' | 'document';
+  mediaUrl?: string;
   timestamp: number;
-  metadata?: Record<string, any>;
 }
 
-export interface ChannelResponse {
-  success: boolean;
-  messageId?: string;
-  error?: string;
+export interface OutgoingMessage {
+  userId: string;
+  channel: string;
+  text: string;
+  media?: { type: string; url?: string; buffer?: Buffer; caption?: string };
 }
 
 export abstract class BaseChannel {
-  protected channelType: 'telegram' | 'discord' | 'whatsapp';
-  protected isActive: boolean = false;
-
-  constructor(channelType: 'telegram' | 'discord' | 'whatsapp') {
-    this.channelType = channelType;
-  }
-
-  /**
-   * Initialize the channel with credentials from KV
-   */
-  abstract initialize(credentials: Record<string, string>): Promise<void>;
-
-  /**
-   * Check if channel is properly configured and active
-   */
+  abstract name: string;
   abstract isConfigured(): Promise<boolean>;
+  abstract start(): Promise<void>;
+  abstract stop(): Promise<void>;
+  abstract sendMessage(userId: string, text: string): Promise<boolean>;
+  abstract sendMedia(userId: string, media: { type: string; url?: string; buffer?: Buffer; caption?: string }): Promise<boolean>;
 
-  /**
-   * Handle incoming webhook/message
-   */
-  abstract handleMessage(payload: any): Promise<ChannelMessage | null>;
+  protected messageHandler: ((msg: IncomingMessage) => void) | null = null;
 
-  /**
-   * Send a message to a user
-   */
-  abstract sendMessage(userId: string, text: string): Promise<ChannelResponse>;
-
-  /**
-   * Send a file to a user
-   */
-  abstract sendFile(userId: string, fileUrl: string, caption?: string): Promise<ChannelResponse>;
-
-  /**
-   * Get channel type
-   */
-  getChannelType(): 'telegram' | 'discord' | 'whatsapp' {
-    return this.channelType;
-  }
-
-  /**
-   * Check if channel is active
-   */
-  getIsActive(): boolean {
-    return this.isActive;
+  onMessage(handler: (msg: IncomingMessage) => void) {
+    this.messageHandler = handler;
   }
 }

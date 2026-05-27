@@ -1,205 +1,122 @@
+import { BaseChannel, IncomingMessage } from './base';
+import { getCredential } from '../db/credentials';
+import { log } from '../utils/logger';
+import express from 'express';
+
 /**
- * WhatsApp channel implementation using WhatsApp Cloud API
+ * WhatsApp Channel using Cloud API (webhook-based)
  */
-
-import { BaseChannel, ChannelMessage, ChannelResponse } from './base';
-
 export class WhatsAppChannel extends BaseChannel {
-  private phoneNumberId: string = '';
-  private businessAccountId: string = '';
+  name = 'whatsapp';
+  private phoneId: string = '';
   private accessToken: string = '';
-  private verifyToken: string = '';
+  private server: any = null;
 
-  constructor() {
-    super('whatsapp');
+  async isConfigured(): Promise<boolean> {
+    const phoneId = await getCredential('WHATSAPP_PHONE_NUMBER_ID');
+    const token = await getCredential('WHATSAPP_ACCESS_TOKEN');
+    return !!(phoneId && token);
   }
 
-  async initialize(credentials: Record<string, string>): Promise<void> {
-    this.phoneNumberId = credentials.WHATSAPP_PHONE_NUMBER_ID || '';
-    this.businessAccountId = credentials.WHATSAPP_BUSINESS_ACCOUNT_ID || '';
-    this.accessToken = credentials.WHATSAPP_ACCESS_TOKEN || '';
-    this.verifyToken = credentials.WHATSAPP_VERIFY_TOKEN || '';
+  async start(): Promise<void> {
+    this.phoneId = (await getCredential('WHATSAPP_PHONE_NUMBER_ID')) || '';
+    this.accessToken = (await getCredential('WHATSAPP_ACCESS_TOKEN')) || '';
+    const verifyToken = (await getCredential('WHATSAPP_VERIFY_TOKEN')) || 'cloudbrain_verify';
 
-    if (!this.phoneNumberId || !this.businessAccountId || !this.accessToken) {
-      this.isActive = false;
+    if (!this.phoneId || !this.accessToken) {
+      log.warn('WHATSAPP', 'Not configured, skipping');
       return;
     }
 
-    try {
-      // Verify credentials by making a test API call
-      const response = await fetch(
-        `https://graph.facebook.com/v18.0/${this.phoneNumberId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${this.accessToken}`,
-          },
-        }
-      );
+    // Start webhook server for WhatsApp
+    const app = express();
+    app.use(express.json());
 
-      if (response.ok) {
-        this.isActive = true;
+    // Verification endpoint
+    app.get('/whatsapp', (req, res) => {
+      const mode = req.query['hub.mode'];
+      const token = req.query['hub.verify_token'];
+      const challenge = req.query['hub.challenge'];
+      if (mode === 'subscribe' && token === verifyToken) {
+        res.status(200).send(challenge);
       } else {
-        console.error('WhatsApp credentials verification failed');
-        this.isActive = false;
+        res.sendStatus(403);
       }
-    } catch (error) {
-      console.error('Failed to initialize WhatsApp channel:', error);
-      this.isActive = false;
-    }
-  }
+    });
 
-  async isConfigured(): Promise<boolean> {
-    return (
-      this.isActive &&
-      !!this.phoneNumberId &&
-      !!this.businessAccountId &&
-      !!this.accessToken
-    );
-  }
+    // Message webhook
+    app.post('/whatsapp', (req, res) => {
+      res.sendStatus(200);
+      const entry = req.body?.entry?.[0];
+      const change = entry?.changes?.[0];
+      const msg = change?.value?.messages?.[0];
+      if (!msg) return;
 
-  async handleMessage(payload: any): Promise<ChannelMessage | null> {
-    try {
-      const entry = payload.entry?.[0];
-      const changes = entry?.changes?.[0];
-      const value = changes?.value;
-
-      if (!value?.messages) {
-        return null;
-      }
-
-      const message = value.messages[0];
-      const contact = value.contacts?.[0];
-      const userId = message.from;
-      const text = message.text?.body || '';
-
-      if (!userId || !text) {
-        return null;
-      }
-
-      return {
-        id: message.id,
-        channelType: 'whatsapp',
-        userId,
-        text,
-        timestamp: message.timestamp * 1000,
-        metadata: {
-          contactName: contact?.profile?.name,
-          messageType: message.type,
-        },
+      const incoming: IncomingMessage = {
+        id: msg.id,
+        userId: msg.from,
+        channel: 'whatsapp',
+        text: msg.text?.body || '',
+        timestamp: parseInt(msg.timestamp) * 1000,
       };
-    } catch (error) {
-      console.error('Error handling WhatsApp message:', error);
-      return null;
-    }
+
+      if (msg.type === 'image') { incoming.hasMedia = true; incoming.mediaType = 'photo'; }
+      if (msg.type === 'audio') { incoming.hasMedia = true; incoming.mediaType = 'audio'; }
+      if (msg.type === 'video') { incoming.hasMedia = true; incoming.mediaType = 'video'; }
+      if (msg.type === 'document') { incoming.hasMedia = true; incoming.mediaType = 'document'; }
+
+      if (this.messageHandler) this.messageHandler(incoming);
+    });
+
+    const port = parseInt(process.env.WHATSAPP_PORT || '3001');
+    this.server = app.listen(port, () => {
+      log.success('WHATSAPP', `Webhook server running on port ${port}`);
+    });
   }
 
-  async sendMessage(userId: string, text: string): Promise<ChannelResponse> {
-    if (!this.accessToken || !this.phoneNumberId) {
-      return { success: false, error: 'WhatsApp not initialized' };
-    }
+  async stop(): Promise<void> {
+    if (this.server) this.server.close();
+  }
 
+  async sendMessage(userId: string, text: string): Promise<boolean> {
     try {
       const response = await fetch(
-        `https://graph.facebook.com/v18.0/${this.phoneNumberId}/messages`,
+        `https://graph.facebook.com/v18.0/${this.phoneId}/messages`,
         {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${this.accessToken}`,
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Authorization': `Bearer ${this.accessToken}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             messaging_product: 'whatsapp',
             to: userId,
             type: 'text',
-            text: {
-              body: text,
-            },
+            text: { body: text },
           }),
         }
       );
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error?.message || 'Failed to send message');
-      }
-
-      const result = await response.json();
-
-      return {
-        success: true,
-        messageId: result.messages?.[0]?.id,
-      };
-    } catch (error) {
-      console.error('Error sending WhatsApp message:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      };
+      return response.ok;
+    } catch (error: any) {
+      log.error('WHATSAPP', `Send failed: ${error.message}`);
+      return false;
     }
   }
 
-  async sendFile(userId: string, fileUrl: string, caption?: string): Promise<ChannelResponse> {
-    if (!this.accessToken || !this.phoneNumberId) {
-      return { success: false, error: 'WhatsApp not initialized' };
-    }
-
+  async sendMedia(userId: string, media: { type: string; url?: string; buffer?: Buffer; caption?: string }): Promise<boolean> {
     try {
-      // Determine file type from URL
-      const fileType = this.getFileType(fileUrl);
+      const body: any = { messaging_product: 'whatsapp', to: userId };
+      if (media.type === 'photo') { body.type = 'image'; body.image = { link: media.url, caption: media.caption }; }
+      else if (media.type === 'audio') { body.type = 'audio'; body.audio = { link: media.url }; }
+      else if (media.type === 'video') { body.type = 'video'; body.video = { link: media.url, caption: media.caption }; }
+      else { body.type = 'document'; body.document = { link: media.url, caption: media.caption }; }
 
-      const response = await fetch(
-        `https://graph.facebook.com/v18.0/${this.phoneNumberId}/messages`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${this.accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            messaging_product: 'whatsapp',
-            to: userId,
-            type: fileType,
-            [fileType]: {
-              link: fileUrl,
-              caption: caption,
-            },
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error?.message || 'Failed to send file');
-      }
-
-      const result = await response.json();
-
-      return {
-        success: true,
-        messageId: result.messages?.[0]?.id,
-      };
-    } catch (error) {
-      console.error('Error sending WhatsApp file:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      };
+      const response = await fetch(`https://graph.facebook.com/v18.0/${this.phoneId}/messages`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${this.accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      return response.ok;
+    } catch (error: any) {
+      log.error('WHATSAPP', `Send media failed: ${error.message}`);
+      return false;
     }
-  }
-
-  private getFileType(fileUrl: string): 'image' | 'document' | 'video' | 'audio' {
-    const url = fileUrl.toLowerCase();
-
-    if (url.match(/\.(jpg|jpeg|png|gif|webp)$/)) {
-      return 'image';
-    }
-    if (url.match(/\.(mp4|mov|avi|mkv)$/)) {
-      return 'video';
-    }
-    if (url.match(/\.(mp3|wav|ogg|m4a)$/)) {
-      return 'audio';
-    }
-
-    return 'document';
   }
 }

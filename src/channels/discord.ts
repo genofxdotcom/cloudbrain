@@ -1,236 +1,134 @@
+import { BaseChannel, IncomingMessage } from './base';
+import { getCredential } from '../db/credentials';
+import { log } from '../utils/logger';
+import WebSocket from 'ws';
+
 /**
- * Discord channel implementation
+ * Discord channel using raw Gateway WebSocket (no discord.js dependency)
  */
-
-import { BaseChannel, ChannelMessage, ChannelResponse } from './base';
-
 export class DiscordChannel extends BaseChannel {
+  name = 'discord';
+  private ws: WebSocket | null = null;
   private token: string = '';
-  private clientId: string = '';
-  private webhookUrl: string = '';
-
-  constructor() {
-    super('discord');
-  }
-
-  async initialize(credentials: Record<string, string>): Promise<void> {
-    this.token = credentials.DISCORD_BOT_TOKEN || '';
-    this.clientId = credentials.DISCORD_CLIENT_ID || '';
-    this.webhookUrl = credentials.DISCORD_WEBHOOK_URL || '';
-
-    if (!this.token || !this.clientId) {
-      this.isActive = false;
-      return;
-    }
-
-    try {
-      // Verify token by making a test API call
-      const response = await fetch('https://discord.com/api/v10/users/@me', {
-        headers: {
-          Authorization: `Bot ${this.token}`,
-        },
-      });
-
-      if (response.ok) {
-        this.isActive = true;
-      } else {
-        console.error('Discord token verification failed');
-        this.isActive = false;
-      }
-    } catch (error) {
-      console.error('Failed to initialize Discord channel:', error);
-      this.isActive = false;
-    }
-  }
+  private heartbeatInterval: NodeJS.Timeout | null = null;
+  private sequence: number | null = null;
 
   async isConfigured(): Promise<boolean> {
-    return this.isActive && !!this.token && !!this.clientId;
+    const token = await getCredential('DISCORD_BOT_TOKEN');
+    return !!token;
   }
 
-  async handleMessage(payload: any): Promise<ChannelMessage | null> {
-    try {
-      // Discord interaction payload
-      if (payload.type === 1) {
-        // PING interaction
-        return null;
+  async start(): Promise<void> {
+    this.token = (await getCredential('DISCORD_BOT_TOKEN')) || '';
+    if (!this.token) { log.warn('DISCORD', 'Not configured, skipping'); return; }
+
+    this.connect();
+    log.success('DISCORD', 'Bot connecting via Gateway');
+  }
+
+  private connect() {
+    this.ws = new WebSocket('wss://gateway.discord.gg/?v=10&encoding=json');
+
+    this.ws.on('message', (data) => {
+      const payload = JSON.parse(data.toString());
+      this.handleGatewayEvent(payload);
+    });
+
+    this.ws.on('close', () => {
+      log.warn('DISCORD', 'Connection closed, reconnecting in 5s...');
+      setTimeout(() => this.connect(), 5000);
+    });
+
+    this.ws.on('error', (err) => {
+      log.error('DISCORD', `WebSocket error: ${err.message}`);
+    });
+  }
+
+  private handleGatewayEvent(payload: any) {
+    const { op, d, s, t } = payload;
+    if (s) this.sequence = s;
+
+    switch (op) {
+      case 10: // Hello
+        this.startHeartbeat(d.heartbeat_interval);
+        this.identify();
+        break;
+      case 11: // Heartbeat ACK
+        break;
+    }
+
+    if (t === 'MESSAGE_CREATE' && d.author && !d.author.bot) {
+      const incoming: IncomingMessage = {
+        id: d.id,
+        userId: d.author.id,
+        channel: 'discord',
+        text: d.content || '',
+        timestamp: new Date(d.timestamp).getTime(),
+      };
+
+      if (d.attachments?.length > 0) {
+        incoming.hasMedia = true;
+        incoming.mediaType = 'document';
+        incoming.mediaUrl = d.attachments[0].url;
       }
 
-      if (payload.type === 2) {
-        // APPLICATION_COMMAND interaction
-        const interaction = payload;
-        const userId = interaction.member?.user?.id || interaction.user?.id;
-        const text = interaction.data?.options?.[0]?.value || '';
-
-        if (!userId || !text) {
-          return null;
-        }
-
-        return {
-          id: interaction.id,
-          channelType: 'discord',
-          userId,
-          text,
-          timestamp: Date.now(),
-          metadata: {
-            guildId: interaction.guild_id,
-            channelId: interaction.channel_id,
-            username: interaction.member?.user?.username || interaction.user?.username,
-          },
-        };
-      }
-
-      if (payload.type === 3) {
-        // MESSAGE_COMPONENT interaction
-        const interaction = payload;
-        const userId = interaction.member?.user?.id || interaction.user?.id;
-        const text = interaction.data?.custom_id || '';
-
-        if (!userId) {
-          return null;
-        }
-
-        return {
-          id: interaction.id,
-          channelType: 'discord',
-          userId,
-          text,
-          timestamp: Date.now(),
-          metadata: {
-            guildId: interaction.guild_id,
-            channelId: interaction.channel_id,
-            username: interaction.member?.user?.username || interaction.user?.username,
-          },
-        };
-      }
-
-      return null;
-    } catch (error) {
-      console.error('Error handling Discord message:', error);
-      return null;
+      if (this.messageHandler) this.messageHandler(incoming);
     }
   }
 
-  async sendMessage(userId: string, text: string): Promise<ChannelResponse> {
-    if (!this.token) {
-      return { success: false, error: 'Discord bot not initialized' };
-    }
+  private startHeartbeat(interval: number) {
+    this.heartbeatInterval = setInterval(() => {
+      this.ws?.send(JSON.stringify({ op: 1, d: this.sequence }));
+    }, interval);
+  }
 
+  private identify() {
+    this.ws?.send(JSON.stringify({
+      op: 2,
+      d: {
+        token: this.token,
+        intents: 513, // GUILDS + GUILD_MESSAGES
+        properties: { os: 'linux', browser: 'cloudbrain', device: 'cloudbrain' },
+      },
+    }));
+  }
+
+  async stop(): Promise<void> {
+    if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
+    this.ws?.close();
+    this.ws = null;
+  }
+
+  async sendMessage(userId: string, text: string): Promise<boolean> {
+    // Discord sends to channels, not users directly. userId here is channelId.
     try {
-      // Create DM channel
-      const dmResponse = await fetch('https://discord.com/api/v10/users/@me/channels', {
+      const response = await fetch(`https://discord.com/api/v10/channels/${userId}/messages`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bot ${this.token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          recipient_id: userId,
-        }),
+        headers: { 'Authorization': `Bot ${this.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: text }),
       });
-
-      if (!dmResponse.ok) {
-        throw new Error('Failed to create DM channel');
-      }
-
-      const dmChannel = await dmResponse.json();
-
-      // Send message
-      const messageResponse = await fetch(
-        `https://discord.com/api/v10/channels/${dmChannel.id}/messages`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bot ${this.token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            content: text,
-          }),
-        }
-      );
-
-      if (!messageResponse.ok) {
-        throw new Error('Failed to send message');
-      }
-
-      const message = await messageResponse.json();
-
-      return {
-        success: true,
-        messageId: message.id,
-      };
-    } catch (error) {
-      console.error('Error sending Discord message:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      };
+      return response.ok;
+    } catch (error: any) {
+      log.error('DISCORD', `Send failed: ${error.message}`);
+      return false;
     }
   }
 
-  async sendFile(userId: string, fileUrl: string, caption?: string): Promise<ChannelResponse> {
-    if (!this.token) {
-      return { success: false, error: 'Discord bot not initialized' };
-    }
-
+  async sendMedia(userId: string, media: { type: string; url?: string; buffer?: Buffer; caption?: string }): Promise<boolean> {
+    // Send as embed with URL
     try {
-      // Create DM channel
-      const dmResponse = await fetch('https://discord.com/api/v10/users/@me/channels', {
+      const embed: any = { description: media.caption || '' };
+      if (media.type === 'photo' && media.url) embed.image = { url: media.url };
+
+      const response = await fetch(`https://discord.com/api/v10/channels/${userId}/messages`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bot ${this.token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          recipient_id: userId,
-        }),
+        headers: { 'Authorization': `Bot ${this.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: media.caption || '', embeds: media.url ? [embed] : [] }),
       });
-
-      if (!dmResponse.ok) {
-        throw new Error('Failed to create DM channel');
-      }
-
-      const dmChannel = await dmResponse.json();
-
-      // Send file as embed
-      const messageResponse = await fetch(
-        `https://discord.com/api/v10/channels/${dmChannel.id}/messages`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bot ${this.token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            content: caption || 'File',
-            embeds: [
-              {
-                url: fileUrl,
-                image: {
-                  url: fileUrl,
-                },
-              },
-            ],
-          }),
-        }
-      );
-
-      if (!messageResponse.ok) {
-        throw new Error('Failed to send file');
-      }
-
-      const message = await messageResponse.json();
-
-      return {
-        success: true,
-        messageId: message.id,
-      };
-    } catch (error) {
-      console.error('Error sending Discord file:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      };
+      return response.ok;
+    } catch (error: any) {
+      log.error('DISCORD', `Send media failed: ${error.message}`);
+      return false;
     }
   }
 }

@@ -82,6 +82,10 @@ export async function setupCommand(): Promise<void> {
     }
   }
 
+  // Auto-provision Cloudflare infrastructure
+  const { autoProvision } = await import('./auto-provision');
+  await autoProvision();
+
   console.log(o('\n  ✓ Setup complete! Run ') + chalk.white('cloudbrain start') + o(' to launch.\n'));
 }
 

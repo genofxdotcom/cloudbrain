@@ -1,0 +1,121 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
+import { initDatabase } from './db/connection';
+import { ChannelManager } from './channels/manager';
+import { WranglerExecutor } from './wrangler/executor';
+import { PlannerAgent } from './agents/planner';
+import { ExecutorAgent } from './agents/executor';
+import { WorkersAI } from './ai/worker-ai';
+import { WebSearch } from './search/web';
+import { HeartbeatScheduler } from './scheduler/cron';
+import { ContextManager } from './context/manager';
+import { IncomingMessage } from './channels/base';
+import { log } from './utils/logger';
+import { BANNER, VERSION } from './utils/constants';
+import chalk from 'chalk';
+
+/**
+ * CloudBrain 2.0 - Main Agent Process
+ */
+export async function startAgent(): Promise<void> {
+  console.log(BANNER);
+  console.log(chalk.hex('#FF8C00')(`  v${VERSION}`) + chalk.gray(' | Starting agent...\n'));
+
+  // 1. Database
+  const dbConfig = {
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT || '3306'),
+    user: process.env.DB_USER || 'cloudbrain',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'cloudbrain',
+  };
+  await initDatabase(dbConfig);
+
+  // 2. Core services
+  const wrangler = new WranglerExecutor();
+  const ai = new WorkersAI();
+  const search = new WebSearch();
+  const context = new ContextManager();
+  const channels = new ChannelManager();
+  await channels.initialize();
+
+  // 3. Scheduler
+  const scheduler = new HeartbeatScheduler(channels);
+  scheduler.setExecutor(async (action, userId, channel) => {
+    // When a scheduled task fires, route it through the AI
+    return ai.chat(`Execute this scheduled task: ${action}`);
+  });
+  await scheduler.loadFromDB();
+
+  // 4. Multi-agent system
+  const planner = new PlannerAgent();
+  const executor = new ExecutorAgent(wrangler, channels);
+
+  // Wire up executor handlers
+  executor.setAIHandler((prompt, sys) => ai.chat(prompt, sys));
+  executor.setSearchHandler((q) => search.search(q));
+  executor.setScheduleHandler(async (userId, channel, params) => {
+    const cronExpr = scheduler.parseTime(params.timeExpression);
+    if (!cronExpr) return `Could not parse time: "${params.timeExpression}". Try "at 9am", "every hour", "daily".`;
+    return scheduler.create(userId, channel, params.taskName, params.action, cronExpr);
+  });
+
+  // 5. Start channels
+  const active = await channels.startAll();
+
+  // 6. Message handler - the brain
+  channels.onMessage(async (message: IncomingMessage) => {
+    log.info('MSG', `[${message.channel}] ${message.userId}: ${message.text.substring(0, 60)}`);
+
+    try {
+      // Store user message in context
+      await context.addMessage(message.userId, message.channel, 'user', message.text);
+
+      // Plan the execution
+      const plan = planner.createPlan(message);
+
+      // Execute plan
+      const response = await executor.executePlan(plan, message);
+
+      // Send final response (single message unless multi-step already sent progress)
+      if (!plan.isMultiStep && response) {
+        await channels.send(message.channel, message.userId, response);
+      } else if (plan.isMultiStep && response) {
+        // Multi-step: send final summary
+        await channels.send(message.channel, message.userId, response);
+      }
+
+      // Store assistant response in context
+      await context.addMessage(message.userId, message.channel, 'assistant', response);
+
+      // Store important things in long-term memory
+      if (message.text.toLowerCase().includes('remember')) {
+        await context.remember(message.userId, message.text, 7);
+      }
+
+    } catch (error: any) {
+      log.error('AGENT', `Processing error: ${error.message}`);
+      await channels.send(message.channel, message.userId, `Something went wrong: ${error.message}`);
+    }
+  });
+
+  // 7. Graceful shutdown
+  process.on('SIGINT', async () => {
+    log.info('AGENT', 'Shutting down...');
+    scheduler.stopAll();
+    await channels.stopAll();
+    process.exit(0);
+  });
+
+  log.success('AGENT', `CloudBrain 2.0 running | Channels: ${active.join(', ') || 'none (use "cloudbrain setup")'}`);
+  log.info('AGENT', 'Waiting for messages... (Ctrl+C to stop)');
+}
+
+// If run directly (not imported by CLI)
+if (require.main === module) {
+  startAgent().catch((err) => {
+    log.error('FATAL', err.message);
+    process.exit(1);
+  });
+}

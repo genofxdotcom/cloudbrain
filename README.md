@@ -217,6 +217,10 @@ npm run build      # Compile TypeScript to dist/
 npm start          # Run compiled version
 ```
 
+## Previous Version (v1)
+
+The original Cloudflare Workers-based version is archived at commit [`9cd602d`](https://github.com/truehannan/cloudbrain/commit/9cd602d67af39a2981a494e48655f5d0dbe3eb05). That approach was abandoned due to Workers' 30-second execution limit and stateless architecture making persistent agent behavior impossible.
+
 ## License
 
 See LICENSE file.

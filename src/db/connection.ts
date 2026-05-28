@@ -17,8 +17,11 @@ export async function initDatabase(config: DBConfig): Promise<mysql.Pool> {
   if (pool) return pool;
 
   try {
+    // Fix IPv6 issue: Node.js may resolve 'localhost' to ::1 (IPv6) which MySQL often doesn't listen on
+    const host = config.host === 'localhost' ? '127.0.0.1' : config.host;
+
     pool = mysql.createPool({
-      host: config.host,
+      host,
       port: config.port,
       user: config.user,
       password: config.password,

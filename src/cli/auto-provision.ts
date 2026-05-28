@@ -78,7 +78,7 @@ export async function autoProvision(): Promise<void> {
   }
 
   console.log(o('\n  ✓ Infrastructure provisioning complete.\n'));
-  console.log(chalk.gray('  Resources stored in local MySQL. Agent will use these automatically.'));
+  console.log(chalk.gray('  Resources stored in local database. Agent will use these automatically.'));
   console.log(chalk.gray('  Other resources (KV, R2, Workers) created on-demand when you ask.\n'));
 }
 

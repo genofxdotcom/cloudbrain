@@ -4,7 +4,7 @@ import { log } from '../utils/logger';
 import { ChannelManager } from '../channels/manager';
 
 /**
- * Heartbeat Scheduler - Persistent cron jobs stored in MySQL
+ * Heartbeat Scheduler - Persistent cron jobs stored in SQLite
  */
 export class HeartbeatScheduler {
   private jobs: Map<string, cron.ScheduledTask> = new Map();

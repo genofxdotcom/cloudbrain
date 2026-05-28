@@ -31,7 +31,7 @@ export class WebSearch {
     try {
       const response = await fetch(`https://duckduckgo.com/?q=${encodeURIComponent(query)}&format=json`);
       if (!response.ok) return [];
-      const data = await response.json();
+      const data: any = await response.json();
 
       const results: SearchResult[] = [];
       if (data.AbstractText) {
@@ -57,7 +57,7 @@ export class WebSearch {
         headers: { 'Ocp-Apim-Subscription-Key': key },
       });
       if (!response.ok) return [];
-      const data = await response.json();
+      const data: any = await response.json();
       return (data.webPages?.value || []).map((p: any) => ({ title: p.name, url: p.url, description: p.snippet }));
     } catch { return []; }
   }

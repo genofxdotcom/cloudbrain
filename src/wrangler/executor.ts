@@ -201,7 +201,7 @@ export class WranglerExecutor {
       const response = await fetch(`https://api.cloudflare.com/client/v4${path}`, {
         headers: { 'Authorization': `Bearer ${this.apiToken}`, 'Content-Type': 'application/json' },
       });
-      const data = await response.json();
+      const data: any = await response.json();
       if (response.ok) {
         return { success: true, output: JSON.stringify(data.result, null, 2), exitCode: 0 };
       }
@@ -219,7 +219,7 @@ export class WranglerExecutor {
         headers: { 'Authorization': `Bearer ${this.apiToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      const data = await response.json();
+      const data: any = await response.json();
       if (response.ok) {
         return { success: true, output: JSON.stringify(data.result, null, 2), exitCode: 0 };
       }

@@ -57,6 +57,21 @@ export class PlannerAgent {
     const tasks: SubTask[] = [];
     const taskId = () => `t_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
+    // ===== MULTI-STEP DETECTION (check first, before single-intent) =====
+    // Check for "then", "and also", "after that" patterns
+    const parts = original.split(/\s+(?:then|and then|after that|also|next)\s+/i);
+    if (parts.length > 1) {
+      for (let i = 0; i < parts.length; i++) {
+        const partLower = parts[i].toLowerCase();
+        const subTasks = this.detectSteps(partLower, parts[i]);
+        for (const t of subTasks) {
+          if (i > 0) t.dependsOn = tasks[tasks.length - 1]?.id;
+          tasks.push(t);
+        }
+      }
+      return tasks;
+    }
+
     // ===== WRANGLER / CLOUDFLARE OPERATIONS =====
     if (this.matchesCF(lower)) {
       tasks.push({ id: taskId(), action: original, type: 'wrangler', params: this.parseCFParams(lower, original), status: 'pending' });
@@ -90,21 +105,6 @@ export class PlannerAgent {
     // ===== MEDIA =====
     if (this.matchesMedia(lower)) {
       tasks.push({ id: taskId(), action: original, type: 'media', params: { operation: this.parseMediaOp(lower) }, status: 'pending' });
-      return tasks;
-    }
-
-    // ===== MULTI-STEP DETECTION =====
-    // Check for "then", "and also", "after that" patterns
-    const parts = original.split(/\s+(?:then|and then|after that|also|next)\s+/i);
-    if (parts.length > 1) {
-      for (let i = 0; i < parts.length; i++) {
-        const partLower = parts[i].toLowerCase();
-        const subTasks = this.detectSteps(partLower, parts[i]);
-        for (const t of subTasks) {
-          if (i > 0) t.dependsOn = tasks[tasks.length - 1]?.id;
-          tasks.push(t);
-        }
-      }
       return tasks;
     }
 

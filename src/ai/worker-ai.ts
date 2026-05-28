@@ -34,7 +34,7 @@ export class WorkersAI {
         }
       );
 
-      const data = await response.json();
+      const data: any = await response.json();
       if (data.result?.response) {
         return this.cleanResponse(data.result.response);
       }
@@ -85,7 +85,7 @@ export class WorkersAI {
         }
       );
 
-      const data = await response.json();
+      const data: any = await response.json();
       if (data.result?.text) {
         return { success: true, text: data.result.text };
       }

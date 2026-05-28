@@ -84,13 +84,11 @@ export class ContextManager {
    * Cleanup old conversations (keep last N per user)
    */
   async cleanup(maxPerUser: number = 100): Promise<number> {
-    // Keep only most recent messages per user
+    // Keep only most recent messages (SQLite compatible)
     const result = await query(`
-      DELETE c FROM conversations c
-      LEFT JOIN (
+      DELETE FROM conversations WHERE id NOT IN (
         SELECT id FROM conversations ORDER BY created_at DESC LIMIT ?
-      ) keep ON c.id = keep.id
-      WHERE keep.id IS NULL
+      )
     `, [maxPerUser * 100]); // rough limit
     return result.affectedRows || 0;
   }

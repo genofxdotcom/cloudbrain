@@ -17,17 +17,13 @@ export async function setupCommand(): Promise<void> {
   console.log(o('  │   Configure credentials & services      │'));
   console.log(o('  └─────────────────────────────────────────┘\n'));
 
-  // First: database setup
-  const dbConfig = await promptDatabaseConfig();
-
-  const spinner = ora({ text: 'Connecting to MySQL...', color: 'yellow' }).start();
+  // Initialize embedded SQLite database (no server needed)
+  const spinner = ora({ text: 'Initializing database...', color: 'yellow' }).start();
   try {
-    await initDatabase(dbConfig);
-    spinner.succeed(chalk.green('Connected to MySQL'));
+    await initDatabase();
+    spinner.succeed(chalk.green('Database ready (SQLite, embedded)'));
   } catch (error: any) {
-    spinner.fail(chalk.red(`MySQL connection failed: ${error.message}`));
-    console.log(chalk.gray('\n  Make sure MySQL is running and credentials are correct.'));
-    console.log(chalk.gray('  You can create the database with: CREATE DATABASE cloudbrain;\n'));
+    spinner.fail(chalk.red(`Database initialization failed: ${error.message}`));
     return;
   }
 
@@ -87,26 +83,6 @@ export async function setupCommand(): Promise<void> {
   await autoProvision();
 
   console.log(o('\n  ✓ Setup complete! Run ') + chalk.white('cloudbrain start') + o(' to launch.\n'));
-}
-
-async function promptDatabaseConfig() {
-  console.log(o('  Database Configuration\n'));
-
-  const answers = await inquirer.prompt([
-    { type: 'input', name: 'host', message: 'MySQL host:', default: 'localhost' },
-    { type: 'input', name: 'port', message: 'MySQL port:', default: '3306' },
-    { type: 'input', name: 'user', message: 'MySQL user:', default: 'cloudbrain' },
-    { type: 'password', name: 'password', message: 'MySQL password:', mask: '*' },
-    { type: 'input', name: 'database', message: 'Database name:', default: 'cloudbrain' },
-  ]);
-
-  return {
-    host: answers.host,
-    port: parseInt(answers.port),
-    user: answers.user,
-    password: answers.password,
-    database: answers.database,
-  };
 }
 
 async function setupCloudflare() {

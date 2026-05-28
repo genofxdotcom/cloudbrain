@@ -140,16 +140,16 @@ export class PermissionManager {
 
   private async setPolicy(userId: string, operation: string, policy: PermissionPolicy): Promise<void> {
     await query(
-      'INSERT INTO permissions (user_id, operation, policy) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE policy = ?',
-      [userId, operation, policy, policy]
+      'INSERT OR REPLACE INTO permissions (user_id, operation, policy) VALUES (?, ?, ?)',
+      [userId, operation, policy]
     );
     log.info('PERMS', `Policy set: ${userId} ${operation} = ${policy}`);
   }
 
   private async storePending(userId: string, approvalId: string, operation: string): Promise<void> {
     await query(
-      'INSERT INTO system_config (`key`, `value`, description) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE `value` = ?',
-      [`pending_approval_${userId}`, JSON.stringify({ approvalId, operation }), 'Pending approval', JSON.stringify({ approvalId, operation })]
+      'INSERT OR REPLACE INTO system_config (`key`, `value`, description) VALUES (?, ?, ?)',
+      [`pending_approval_${userId}`, JSON.stringify({ approvalId, operation }), 'Pending approval']
     );
   }
 

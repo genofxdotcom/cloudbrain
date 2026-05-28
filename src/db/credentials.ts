@@ -2,14 +2,14 @@ import { query } from './connection';
 import { log } from '../utils/logger';
 
 /**
- * Credential storage in MySQL
+ * Credential storage in SQLite
  * Categories: cloudflare, telegram, discord, whatsapp, search, general
  */
 
 export async function setCredential(key: string, value: string, category: string = 'general'): Promise<void> {
   await query(
-    'INSERT INTO credentials (`key`, `value`, category) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE `value` = ?, category = ?',
-    [key, value, category, value, category]
+    'INSERT OR REPLACE INTO credentials (`key`, `value`, category) VALUES (?, ?, ?)',
+    [key, value, category]
   );
   log.info('CREDS', `Credential set: ${key} (${category})`);
 }

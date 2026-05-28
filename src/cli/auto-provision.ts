@@ -130,8 +130,8 @@ async function runWranglerRaw(args: string[], apiToken: string, accountId: strin
 // System config helpers
 async function setSystemConfig(key: string, value: string, description?: string): Promise<void> {
   await query(
-    'INSERT INTO system_config (`key`, `value`, description) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE `value` = ?, description = ?',
-    [key, value, description || '', value, description || '']
+    'INSERT OR REPLACE INTO system_config (`key`, `value`, description) VALUES (?, ?, ?)',
+    [key, value, description || '']
   );
 }
 

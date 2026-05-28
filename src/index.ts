@@ -23,15 +23,8 @@ export async function startAgent(): Promise<void> {
   console.log(BANNER);
   console.log(chalk.hex('#FF8C00')(`  v${VERSION}`) + chalk.gray(' | Starting agent...\n'));
 
-  // 1. Database
-  const dbConfig = {
-    host: process.env.DB_HOST || 'localhost',
-    port: parseInt(process.env.DB_PORT || '3306'),
-    user: process.env.DB_USER || 'cloudbrain',
-    password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'cloudbrain',
-  };
-  await initDatabase(dbConfig);
+  // 1. Database (embedded SQLite - no external server needed)
+  await initDatabase();
 
   // 2. Core services
   const wrangler = new WranglerExecutor();

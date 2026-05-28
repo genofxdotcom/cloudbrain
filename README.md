@@ -1,6 +1,6 @@
 ![CloudBrain](cloudbrain.png)
 
-# CloudBrain 2.0
+# CloudBrain v2.0
 
 A multi-agent AI system that runs on your VPS and manages your entire Cloudflare infrastructure through natural language. Talk to it via Telegram, Discord, or WhatsApp — or use the CLI directly.
 
@@ -225,4 +225,4 @@ The original Cloudflare Workers-based version is archived at commit [`9cd602d`](
 
 ## License
 
-See LICENSE file.
+See ['LICENSE'](LICENSE) file.

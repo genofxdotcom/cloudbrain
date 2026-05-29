@@ -14,13 +14,13 @@ A multi-agent AI system that runs on your VPS and manages your entire Cloudflare
 - **Context Aware** — Remembers conversations, stores long-term memory
 - **Multi-Agent** — Planner decomposes tasks, Executor handles them with progress updates
 - **Permission System** — Asks before destructive operations (approve/always approve/skip)
+- **Zero-Config Database** — Embedded SQLite, no external database server needed
 
 ![Cloudbrain V2](Cloudbrain-v2.png)
 
 ## Requirements
 
 - Node.js 18+
-- MySQL 8+ (local or remote)
 - Cloudflare account with API token
 - At least one channel: Telegram bot token, Discord bot token, or WhatsApp Cloud API
 
@@ -40,12 +40,14 @@ cloudbrain setup
 ```
 
 This interactive wizard will:
-1. Ask for MySQL credentials and connect
+1. Automatically create an embedded SQLite database at `~/.cloudbrain/cloudbrain.db`
 2. Ask for Cloudflare Account ID + API Token
 3. Ask for channel credentials (Telegram/Discord/WhatsApp)
 4. **Automatically create** a D1 database for CloudBrain on Cloudflare
 5. **Automatically configure** Workers AI binding
-6. Store all resource IDs in local MySQL so the agent knows what belongs to it
+6. Store all resource IDs in the local database so the agent knows what belongs to it
+
+No external database server required — everything is self-contained.
 
 ## Usage
 
@@ -146,12 +148,12 @@ These work identically in Telegram, Discord, WhatsApp, or the CLI shell:
 ┌─────▼────┐┌───▼────┐┌────▼───┐┌─────▼────┐
 │ Channels ││ Agents ││Wrangler││Scheduler │
 │Telegram  ││Planner ││Executor││  Cron    │
-│Discord   ││Executor││ (CLI)  ││ (MySQL)  │
+│Discord   ││Executor││ (CLI)  ││(SQLite)  │
 │WhatsApp  ││        ││        ││          │
 └─────┬────┘└───┬────┘└────┬───┘└─────┬────┘
       │         │          │           │
 ┌─────▼─────────▼──────────▼───────────▼────┐
-│              MySQL Database                │
+│         SQLite Database (embedded)         │
 │  credentials | conversations | memories   │
 │  scheduled_tasks | task_log | system_config│
 └──────────────────────┬────────────────────┘
@@ -170,7 +172,7 @@ These work identically in Telegram, Discord, WhatsApp, or the CLI shell:
 3. **Executor Agent** runs subtasks (wrangler commands, AI calls, searches)
 4. **Progress updates** sent for multi-step operations
 5. **Single response** sent for simple tasks (no spam)
-6. **Context stored** in MySQL for future reference
+6. **Context stored** in SQLite for future reference
 7. **Scheduled tasks** fire automatically via cron and deliver results
 
 ## Permission System
@@ -191,25 +193,13 @@ CloudBrain: You're asking me to delete worker "old-api". This cannot be undone.
 
 | Data | Where | Why |
 |------|-------|-----|
-| Credentials | Local MySQL | Never leaves your machine |
-| Conversations | Local MySQL | Context for AI |
-| Scheduled Tasks | Local MySQL | Survives restarts |
-| System Config | Local MySQL | Tracks created resources |
-| Permission Rules | Local MySQL | Remembers "always approve" |
+| Credentials | Local SQLite (`~/.cloudbrain/cloudbrain.db`) | Never leaves your machine |
+| Conversations | Local SQLite | Context for AI |
+| Scheduled Tasks | Local SQLite | Survives restarts |
+| System Config | Local SQLite | Tracks created resources |
+| Permission Rules | Local SQLite | Remembers "always approve" |
 | App Data | Cloudflare D1 | Agent's working database |
 | Media Files | Cloudflare R2 | On-demand storage |
-
-## Environment Variables (Optional)
-
-You can use a `.env` file instead of `cloudbrain setup` for automation:
-
-```bash
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=cloudbrain
-DB_PASSWORD=your_password
-DB_NAME=cloudbrain
-```
 
 ## Development
 

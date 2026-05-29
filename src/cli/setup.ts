@@ -40,7 +40,6 @@ export async function setupCommand(): Promise<void> {
           { name: `${o('✈')}  Telegram bot`, value: 'telegram' },
           { name: `${o('🎮')}  Discord bot`, value: 'discord' },
           { name: `${o('💬')}  WhatsApp`, value: 'whatsapp' },
-          { name: `${o('🔍')}  Search API keys`, value: 'search' },
           new inquirer.Separator(),
           { name: `${chalk.cyan('📋')}  View configured credentials`, value: 'view' },
           { name: `${chalk.red('🗑')}   Remove a credential`, value: 'remove' },
@@ -62,9 +61,6 @@ export async function setupCommand(): Promise<void> {
         break;
       case 'whatsapp':
         await setupWhatsApp();
-        break;
-      case 'search':
-        await setupSearch();
         break;
       case 'view':
         await viewCredentials();
@@ -150,23 +146,6 @@ async function setupWhatsApp() {
     await setCredential('WHATSAPP_ACCESS_TOKEN', answers.accessToken, 'whatsapp');
     if (answers.verifyToken) await setCredential('WHATSAPP_VERIFY_TOKEN', answers.verifyToken, 'whatsapp');
     console.log(chalk.green('\n  ✓ WhatsApp credentials saved\n'));
-  }
-}
-
-async function setupSearch() {
-  console.log(o('\n  🔍  Search API Configuration\n'));
-  console.log(chalk.gray('  DuckDuckGo works without a key (default)'));
-  console.log(chalk.gray('  Bing key from: https://portal.azure.com\n'));
-
-  const answers = await inquirer.prompt([
-    { type: 'input', name: 'bingKey', message: 'Bing Search API Key (optional, press Enter to skip):' },
-  ]);
-
-  if (answers.bingKey) {
-    await setCredential('BING_SEARCH_KEY', answers.bingKey, 'search');
-    console.log(chalk.green('\n  ✓ Search credentials saved\n'));
-  } else {
-    console.log(chalk.gray('\n  Using DuckDuckGo (free, no key needed)\n'));
   }
 }
 

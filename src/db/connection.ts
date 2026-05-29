@@ -142,6 +142,25 @@ function runMigrations(database: SqlJsDatabase) {
         created_at TEXT DEFAULT (datetime('now')),
         UNIQUE(user_id, operation)
       )`,
+      `CREATE TABLE IF NOT EXISTS user_preferences (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        category TEXT NOT NULL,
+        key TEXT NOT NULL,
+        value TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(user_id, category, key)
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_user_prefs_user ON user_preferences(user_id)`,
+      `CREATE TABLE IF NOT EXISTS user_facts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        fact TEXT NOT NULL,
+        source TEXT DEFAULT 'conversation',
+        created_at TEXT DEFAULT (datetime('now'))
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_user_facts_user ON user_facts(user_id)`,
     ];
 
     for (const stmt of statements) {

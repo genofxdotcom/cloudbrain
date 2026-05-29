@@ -26,10 +26,32 @@ program
 
 program
   .command('start')
-  .description('Start CloudBrain agent daemon')
+  .description('Start CloudBrain as a background daemon (persists after terminal close)')
+  .option('--foreground', 'Run in foreground instead of daemon mode')
+  .action(async (opts) => {
+    if (opts.foreground) {
+      const { startAgent } = await import('../index');
+      await startAgent();
+    } else {
+      const { startDaemon } = await import('./daemon');
+      await startDaemon();
+    }
+  });
+
+program
+  .command('stop')
+  .description('Stop the running CloudBrain daemon')
   .action(async () => {
-    const { startAgent } = await import('../index');
-    await startAgent();
+    const { stopDaemon } = await import('./daemon');
+    await stopDaemon();
+  });
+
+program
+  .command('restart')
+  .description('Restart the CloudBrain daemon')
+  .action(async () => {
+    const { restartDaemon } = await import('./daemon');
+    await restartDaemon();
   });
 
 program
@@ -53,9 +75,10 @@ program
   .command('logs')
   .description('Stream recent logs')
   .option('-n, --lines <number>', 'Lines to show', '50')
+  .option('-f, --follow', 'Follow log output in real-time')
   .action(async (opts) => {
     const { streamLogs } = await import('./logs');
-    await streamLogs(parseInt(opts.lines));
+    await streamLogs(parseInt(opts.lines), opts.follow);
   });
 
 program

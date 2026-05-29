@@ -6,6 +6,7 @@ import { ChannelManager } from './channels/manager';
 import { WranglerExecutor } from './wrangler/executor';
 import { PlannerAgent } from './agents/planner';
 import { ExecutorAgent } from './agents/executor';
+import { SkillRegistry } from './agents/skills';
 import { WorkersAI } from './ai/worker-ai';
 import { WebSearch } from './search/web';
 import { HeartbeatScheduler } from './scheduler/cron';
@@ -42,13 +43,16 @@ export async function startAgent(): Promise<void> {
   });
   await scheduler.loadFromDB();
 
-  // 4. Multi-agent system
+  // 4. Multi-agent skill system
+  const skills = new SkillRegistry(wrangler, search, scheduler);
   const planner = new PlannerAgent();
-  const executor = new ExecutorAgent(wrangler, channels);
+  const executor = new ExecutorAgent(skills, channels);
   const permissions = new PermissionManager(channels);
 
   // Wire up executor handlers
-  executor.setAIHandler((prompt, sys) => ai.chat(prompt, sys));
+  executor.setAIHandler(async (prompt, sys) => {
+    return ai.chat(prompt, sys);
+  });
   executor.setSearchHandler((q) => search.search(q));
   executor.setScheduleHandler(async (userId, channel, params) => {
     const cronExpr = scheduler.parseTime(params.timeExpression);
@@ -68,8 +72,21 @@ export async function startAgent(): Promise<void> {
       const wasApproval = await permissions.handleApprovalResponse(message.userId, message.text);
       if (wasApproval) return; // Consumed by permission system
 
-      // Store user message in context
+      // Store user message in context (also triggers auto-learning)
       await context.addMessage(message.userId, message.channel, 'user', message.text);
+
+      // Build context for AI (memories, facts, history)
+      const userContext = await context.buildContext(message.userId, message.channel);
+
+      // Set up AI handler with user context for this message
+      executor.setAIHandler(async (prompt, sys) => {
+        const systemWithContext = [
+          sys || 'You are CloudBrain, a powerful AI assistant. Be direct and action-oriented. Execute tasks, don\'t just talk about them.',
+          '',
+          userContext,
+        ].join('\n');
+        return ai.chat(prompt, systemWithContext);
+      });
 
       // Plan the execution
       const plan = planner.createPlan(message);
@@ -100,11 +117,6 @@ export async function startAgent(): Promise<void> {
 
       // Store assistant response in context
       if (response) await context.addMessage(message.userId, message.channel, 'assistant', response);
-
-      // Store important things in long-term memory
-      if (message.text.toLowerCase().includes('remember')) {
-        await context.remember(message.userId, message.text, 7);
-      }
 
     } catch (error: any) {
       log.error('AGENT', `Processing error: ${error.message}`);

@@ -1,20 +1,23 @@
 ![CloudBrain](cloudbrain.png)
 
-# CloudBrain v2.0
+# CloudBrain 2.0
 
-A multi-agent AI system that runs on your VPS and manages your entire Cloudflare infrastructure through natural language. Talk to it via Telegram, Discord, or WhatsApp — or use the CLI directly.
+An autonomous multi-agent AI system that runs on your VPS, manages your Cloudflare infrastructure through natural language, and gets smarter the more you use it. Talk to it via Telegram, Discord, or WhatsApp — it runs forever in the background until you stop it.
 
 ## What It Does
 
-- **Manages Cloudflare** — Workers, KV, D1, R2, DNS, Domains via Wrangler commands
+- **Runs as a Daemon** — Starts in background, survives terminal close, runs until machine shuts down
+- **Remembers Everything** — Learns your name, preferences, projects, patterns from every interaction
+- **Multi-Agent System** — 5 specialized skill agents (Coder, Deployer, Searcher, Scheduler, FileManager)
+- **Action-Oriented** — Executes tasks instead of just talking about them
+- **Manages Cloudflare** — Workers, KV, D1, R2, DNS, Domains via Wrangler
 - **Multi-Channel** — Telegram, Discord, WhatsApp + CLI shell
 - **AI Powered** — Text, image generation, audio transcription via Workers AI
 - **Scheduled Tasks** — Cron-based heartbeat system for recurring automations
-- **Web Search** — Real-time search (DuckDuckGo free, Bing optional)
-- **Context Aware** — Remembers conversations, stores long-term memory
-- **Multi-Agent** — Planner decomposes tasks, Executor handles them with progress updates
-- **Permission System** — Asks before destructive operations (approve/always approve/skip)
-- **Zero-Config Database** — Embedded SQLite, no external database server needed
+- **Built-in Search** — No API keys needed, uses DuckDuckGo
+- **Local Code Execution** — Writes and runs code locally, deploys to Cloudflare
+- **Permission System** — Asks before destructive operations
+- **Zero-Config Database** — Embedded SQLite, no external server
 
 ![Cloudbrain V2](Cloudbrain-v2.png)
 
@@ -39,180 +42,205 @@ npm link   # Makes 'cloudbrain' command available globally
 cloudbrain setup
 ```
 
-This interactive wizard will:
+The wizard will:
 1. Automatically create an embedded SQLite database at `~/.cloudbrain/cloudbrain.db`
 2. Ask for Cloudflare Account ID + API Token
 3. Ask for channel credentials (Telegram/Discord/WhatsApp)
-4. **Automatically create** a D1 database for CloudBrain on Cloudflare
-5. **Automatically configure** Workers AI binding
-6. Store all resource IDs in the local database so the agent knows what belongs to it
+4. Auto-provision D1 database and verify Workers AI access
 
-No external database server required — everything is self-contained.
+No external database server needed — everything is self-contained.
 
 ## Usage
 
-### Start the Agent
+### Start the Agent (Background Daemon)
 
 ```bash
 cloudbrain start
 ```
 
-Launches the persistent agent. It connects to all configured channels and listens for messages.
+This spawns a background process that **runs forever** until you stop it or the machine shuts down. Closing the terminal does NOT stop it.
 
-### Interactive Shell
+### Stop / Restart
 
 ```bash
-cloudbrain
+cloudbrain stop       # Stop the daemon
+cloudbrain restart    # Stop + start
 ```
 
-Opens an interactive CLI where you can type commands or natural language.
+### Run in Foreground (for debugging)
+
+```bash
+cloudbrain start --foreground
+```
 
 ### Other Commands
 
 ```bash
-cloudbrain status     # Show system status
-cloudbrain tasks      # View scheduled heartbeat tasks
-cloudbrain logs       # Stream recent activity logs
-cloudbrain channels   # View/manage communication channels
-cloudbrain deploy     # Deploy a worker to Cloudflare
-cloudbrain setup      # Re-run setup to add/change credentials
+cloudbrain status     # Show daemon status (running/stopped, PID)
+cloudbrain logs       # Show recent log output
+cloudbrain logs -f    # Follow logs in real-time
+cloudbrain tasks      # View scheduled tasks
+cloudbrain channels   # View configured channels
+cloudbrain deploy     # Deploy a worker
+cloudbrain setup      # Re-run setup wizard
+cloudbrain shell      # Interactive CLI
 ```
 
-## What You Can Say
+## Multi-Agent Architecture
 
-These work identically in Telegram, Discord, WhatsApp, or the CLI shell:
+CloudBrain uses 5 specialized skill agents coordinated by a Planner:
+
+| Agent | Skill | What It Does |
+|-------|-------|-------------|
+| **Coder** | Code & Commands | Writes code, runs shell commands, manages `~/.cloudbrain/workspace/` |
+| **Deployer** | Cloudflare | Workers, KV, D1, R2, DNS — all via Wrangler |
+| **Searcher** | Web & Local | DuckDuckGo search + local file grep |
+| **Scheduler** | Cron Tasks | Creates/manages recurring automated tasks |
+| **FileManager** | Files | Create, read, delete, move local files |
+
+### How It Works
+
+1. **Message arrives** (Telegram/Discord/WhatsApp/CLI)
+2. **Planner Agent** analyzes intent, splits multi-step requests, assigns to skill agents
+3. **Executor** dispatches to the correct skill agent
+4. **Skill Agent** performs the action (runs code, deploys, searches, etc.)
+5. **Result returned** — concise, action-oriented (no fluff)
+6. **Context stored** — conversation, facts, preferences all persisted for next time
+
+## Memory & Learning
+
+CloudBrain automatically learns from every interaction:
+
+- **Explicit memories** — "remember that my server IP is 1.2.3.4"
+- **Auto-detected facts** — name, timezone, projects mentioned
+- **Preferences** — tools, languages, deployment patterns you use
+- **Usage patterns** — what commands you run most often
+
+Next time you interact, it already knows your context.
+
+## What You Can Say
 
 ### Cloudflare Management
 ```
 "list my workers"
-"list my domains"
-"list kv namespaces"
-"list my databases"
-"list r2 buckets"
 "deploy worker my-api"
 "create kv namespace cache"
 "create database users"
 "create bucket media"
 "delete worker old-one"
-"add dns record A api.example.com 1.2.3.4"
-"show worker logs for my-api"
 ```
 
-### AI Generation
+### Code & Commands
 ```
-"generate image of a sunset over mountains"
-"create an image of a logo with blue colors"
-"transcribe my voice message"
-"write a product description for coffee"
+"write a script that fetches weather data"
+"run command: ls -la"
+"npm install express"
+"git clone https://github.com/user/repo"
 ```
 
-### Scheduling (Heartbeat)
+### File Operations
+```
+"create file config.json"
+"read file index.js"
+"list files"
+"delete file old-script.js"
+```
+
+### Web Search (Built-in, No API Key)
+```
+"search for latest Node.js release"
+"look up cloudflare workers pricing"
+```
+
+### Scheduling
 ```
 "send me news at 9am every day"
 "run backup at midnight"
 "check system status every hour"
-"remind me to review reports at 5pm on friday"
-```
-
-### Web Search
-```
-"search for latest AI news"
-"look up current bitcoin price"
-"find me python tutorials"
 ```
 
 ### Memory
 ```
-"remember that my server IP is 1.2.3.4"
-"what did I tell you about the project?"
+"remember that my deploy branch is production"
+"my name is Alex"
+"I prefer TypeScript over JavaScript"
+"what do you remember about me?"
 ```
 
 ### Multi-Step
 ```
-"create a database called analytics, then deploy a worker that uses it"
+"search for express.js docs then write a hello world server"
+"create a worker called api then deploy it"
 ```
 
 ## Architecture
 
 ```
 ┌──────────────────────────────────────────────────┐
-│                    CLI                            │
-│    cloudbrain setup | start | shell | status      │
+│                 CLI + Daemon                      │
+│  cloudbrain start | stop | restart | status       │
 └──────────────────────┬───────────────────────────┘
                        │
 ┌──────────────────────▼───────────────────────────┐
 │              AGENT CORE (index.ts)               │
-│    Receives messages → Plans → Executes          │
+│    Message → Context → Plan → Execute → Learn    │
 └─────┬──────────┬──────────┬──────────┬───────────┘
       │          │          │          │
-┌─────▼────┐┌───▼────┐┌────▼───┐┌─────▼────┐
-│ Channels ││ Agents ││Wrangler││Scheduler │
-│Telegram  ││Planner ││Executor││  Cron    │
-│Discord   ││Executor││ (CLI)  ││(SQLite)  │
-│WhatsApp  ││        ││        ││          │
-└─────┬────┘└───┬────┘└────┬───┘└─────┬────┘
-      │         │          │           │
-┌─────▼─────────▼──────────▼───────────▼────┐
-│         SQLite Database (embedded)         │
-│  credentials | conversations | memories   │
-│  scheduled_tasks | task_log | system_config│
-└──────────────────────┬────────────────────┘
-                       │
-         ┌─────────────▼─────────────┐
-         │     Cloudflare (Remote)   │
-         │  Workers | KV | D1 | R2   │
-         │  DNS | Zones | AI | Pages │
-         └───────────────────────────┘
+┌─────▼────┐┌───▼────┐┌────▼───┐┌─────▼──────┐
+│ Channels ││Planner ││Context ││ Permission │
+│Telegram  ││ Agent  ││Manager ││  Manager   │
+│Discord   ││        ││Memory  ││            │
+│WhatsApp  ││        ││Learning││            │
+└─────┬────┘└───┬────┘└────┬───┘└────────────┘
+      │         │          │
+┌─────▼─────────▼──────────▼────────────────────┐
+│            SKILL REGISTRY                     │
+│  ┌────────┐ ┌─────────┐ ┌──────────┐         │
+│  │ Coder  │ │Deployer │ │ Searcher │         │
+│  │Code/Run│ │CF/Wrnglr│ │DuckDuckGo│         │
+│  └────────┘ └─────────┘ └──────────┘         │
+│  ┌──────────┐ ┌─────────────┐                │
+│  │Scheduler │ │ FileManager │                │
+│  │  Cron    │ │  Local FS   │                │
+│  └──────────┘ └─────────────┘                │
+└───────────────────────┬───────────────────────┘
+                        │
+┌───────────────────────▼───────────────────────┐
+│         SQLite Database (embedded)            │
+│  credentials | conversations | memories       │
+│  user_preferences | user_facts | task_log     │
+│  scheduled_tasks | system_config | permissions│
+└───────────────────────┬───────────────────────┘
+                        │
+          ┌─────────────▼─────────────┐
+          │     Cloudflare (Remote)   │
+          │  Workers | KV | D1 | R2   │
+          │  DNS | Zones | AI | Pages │
+          └───────────────────────────┘
 ```
-
-## How It Works
-
-1. **Message arrives** (Telegram/Discord/WhatsApp/CLI)
-2. **Planner Agent** analyzes intent, creates execution plan
-3. **Executor Agent** runs subtasks (wrangler commands, AI calls, searches)
-4. **Progress updates** sent for multi-step operations
-5. **Single response** sent for simple tasks (no spam)
-6. **Context stored** in SQLite for future reference
-7. **Scheduled tasks** fire automatically via cron and deliver results
-
-## Permission System
-
-Destructive operations (delete worker, drop database, etc.) require approval:
-
-```
-CloudBrain: You're asking me to delete worker "old-api". This cannot be undone.
-
-[Approve] [Always Approve] [Skip]
-```
-
-- **Approve** — Execute this one time
-- **Always Approve** — Never ask again for this type of operation
-- **Skip** — Don't execute
 
 ## Data Storage
 
-| Data | Where | Why |
-|------|-------|-----|
-| Credentials | Local SQLite (`~/.cloudbrain/cloudbrain.db`) | Never leaves your machine |
-| Conversations | Local SQLite | Context for AI |
-| Scheduled Tasks | Local SQLite | Survives restarts |
-| System Config | Local SQLite | Tracks created resources |
-| Permission Rules | Local SQLite | Remembers "always approve" |
-| App Data | Cloudflare D1 | Agent's working database |
-| Media Files | Cloudflare R2 | On-demand storage |
+| Data | Where | Purpose |
+|------|-------|---------|
+| Credentials | `~/.cloudbrain/cloudbrain.db` | API tokens, never leaves machine |
+| Conversations | SQLite | Context for AI responses |
+| Memories | SQLite | Explicit "remember X" items |
+| User Facts | SQLite | Auto-learned info about you |
+| Preferences | SQLite | Your patterns and choices |
+| Scheduled Tasks | SQLite | Survives restarts |
+| Daemon PID | `~/.cloudbrain/cloudbrain.pid` | Process tracking |
+| Daemon Logs | `~/.cloudbrain/cloudbrain.log` | Runtime output |
+| Workspace | `~/.cloudbrain/workspace/` | Code written by Coder agent |
 
 ## Development
 
 ```bash
-npm run dev        # Run with ts-node (no build needed)
-npm run build      # Compile TypeScript to dist/
-npm start          # Run compiled version
+npm run dev              # Run with ts-node (no build)
+npm run build            # Compile TypeScript to dist/
+cloudbrain start --foreground   # Run in foreground for debugging
 ```
-
-## Previous Version (v1)
-
-The original Cloudflare Workers-based version is archived at commit [`9cd602d`](https://github.com/truehannan/cloudbrain/commit/9cd602d67af39a2981a494e48655f5d0dbe3eb05). That approach was abandoned due to Workers' 30-second execution limit and stateless architecture making persistent agent behavior impossible.
 
 ## License
 
-See ['LICENSE'](LICENSE) file.
+See LICENSE file.

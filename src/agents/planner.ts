@@ -12,12 +12,13 @@ export interface TaskPlan {
 export interface SubTask {
   id: string;
   action: string;
-  type: 'wrangler' | 'ai' | 'search' | 'schedule' | 'memory' | 'media' | 'chat';
+  type: 'wrangler' | 'ai' | 'search' | 'schedule' | 'memory' | 'media' | 'chat' | 'code' | 'file' | 'deploy';
   params: Record<string, any>;
   dependsOn?: string; // ID of task this depends on
   status: 'pending' | 'running' | 'done' | 'failed';
   result?: string;
   error?: string;
+  agent?: string; // Which skill agent handles this
 }
 
 /**
@@ -74,7 +75,19 @@ export class PlannerAgent {
 
     // ===== WRANGLER / CLOUDFLARE OPERATIONS =====
     if (this.matchesCF(lower)) {
-      tasks.push({ id: taskId(), action: original, type: 'wrangler', params: this.parseCFParams(lower, original), status: 'pending' });
+      tasks.push({ id: taskId(), action: original, type: 'deploy', params: this.parseCFParams(lower, original), status: 'pending', agent: 'deployer' });
+      return tasks;
+    }
+
+    // ===== CODE / RUN COMMAND =====
+    if (this.matchesCode(lower)) {
+      tasks.push({ id: taskId(), action: original, type: 'code', params: this.parseCodeParams(lower, original), status: 'pending', agent: 'coder' });
+      return tasks;
+    }
+
+    // ===== FILE OPERATIONS =====
+    if (this.matchesFile(lower)) {
+      tasks.push({ id: taskId(), action: original, type: 'file', params: this.parseFileParams(lower, original), status: 'pending', agent: 'file_manager' });
       return tasks;
     }
 
@@ -209,5 +222,53 @@ export class PlannerAgent {
     const quoted = rest.match(/["']([^"']+)["']/);
     if (quoted) return quoted[1];
     return rest.split(/\s+/)[0] || '';
+  }
+
+  // Code intent detection
+  private matchesCode(text: string): boolean {
+    const phrases = ['write code', 'write a script', 'create a script', 'run command', 'execute command',
+      'run this', 'write a function', 'write a program', 'code a', 'npm install', 'pip install',
+      'git clone', 'git pull', 'compile', 'build the', 'run the server', 'start server'];
+    return phrases.some(p => text.includes(p));
+  }
+
+  private parseCodeParams(lower: string, original: string): Record<string, any> {
+    if (lower.includes('run command') || lower.includes('execute command') || lower.includes('run this')) {
+      const cmd = original.replace(/^.*?(?:run command|execute command|run this)\s*/i, '').trim();
+      return { operation: 'run', command: cmd };
+    }
+    if (lower.includes('npm install') || lower.includes('pip install') || lower.includes('git clone') || lower.includes('git pull')) {
+      return { operation: 'run', command: original };
+    }
+    return { operation: 'write', description: original };
+  }
+
+  // File intent detection
+  private matchesFile(text: string): boolean {
+    const phrases = ['create file', 'write file', 'read file', 'show file', 'cat file',
+      'delete file', 'remove file', 'list files', 'move file', 'rename file'];
+    return phrases.some(p => text.includes(p));
+  }
+
+  private parseFileParams(lower: string, original: string): Record<string, any> {
+    if (lower.includes('create file') || lower.includes('write file')) {
+      const match = original.match(/(?:create|write)\s+file\s+["']?([^\s"']+)["']?/i);
+      return { operation: 'create', path: match?.[1] || '', content: '' };
+    }
+    if (lower.includes('read file') || lower.includes('show file') || lower.includes('cat file')) {
+      const match = original.match(/(?:read|show|cat)\s+file\s+["']?([^\s"']+)["']?/i);
+      return { operation: 'read', path: match?.[1] || '' };
+    }
+    if (lower.includes('delete file') || lower.includes('remove file')) {
+      const match = original.match(/(?:delete|remove)\s+file\s+["']?([^\s"']+)["']?/i);
+      return { operation: 'delete', path: match?.[1] || '' };
+    }
+    if (lower.includes('list files')) {
+      return { operation: 'list' };
+    }
+    if (lower.includes('move file') || lower.includes('rename file')) {
+      return { operation: 'move', from: '', to: '' };
+    }
+    return { operation: 'list' };
   }
 }

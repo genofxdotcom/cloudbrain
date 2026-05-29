@@ -1,34 +1,30 @@
-import Database from 'better-sqlite3';
+import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import { log } from '../utils/logger';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
-let db: Database.Database | null = null;
+let db: SqlJsDatabase | null = null;
+let dbFilePath: string = '';
 
 export interface DBConfig {
-  host?: string;
-  port?: number;
-  user?: string;
-  password?: string;
-  database?: string;
   dbPath?: string; // SQLite file path
 }
 
 /**
  * Initialize SQLite database (embedded, no server required)
+ * Uses sql.js (pure JS/WASM, no native bindings needed)
  * The DB file is stored at ~/.cloudbrain/cloudbrain.db
  */
-export async function initDatabase(config?: DBConfig): Promise<Database.Database> {
+export async function initDatabase(config?: DBConfig): Promise<SqlJsDatabase> {
   if (db) return db;
 
   try {
-    // Determine DB file location
     const dbDir = config?.dbPath
       ? path.dirname(config.dbPath)
       : path.join(os.homedir(), '.cloudbrain');
 
-    const dbFile = config?.dbPath
+    dbFilePath = config?.dbPath
       ? config.dbPath
       : path.join(dbDir, 'cloudbrain.db');
 
@@ -37,16 +33,24 @@ export async function initDatabase(config?: DBConfig): Promise<Database.Database
       fs.mkdirSync(dbDir, { recursive: true });
     }
 
-    db = new Database(dbFile);
+    // Initialize sql.js
+    const SQL = await initSqlJs();
 
-    // Enable WAL mode for better concurrent performance
-    db.pragma('journal_mode = WAL');
-    db.pragma('foreign_keys = ON');
+    // Load existing DB file or create new one
+    if (fs.existsSync(dbFilePath)) {
+      const buffer = fs.readFileSync(dbFilePath);
+      db = new SQL.Database(buffer);
+    } else {
+      db = new SQL.Database();
+    }
 
-    log.success('DB', `SQLite connected: ${dbFile}`);
+    log.success('DB', `SQLite connected: ${dbFilePath}`);
 
     // Run migrations
     runMigrations(db);
+
+    // Save after migrations
+    saveDatabase();
 
     return db;
   } catch (error) {
@@ -55,9 +59,15 @@ export async function initDatabase(config?: DBConfig): Promise<Database.Database
   }
 }
 
-function runMigrations(database: Database.Database) {
+function saveDatabase() {
+  if (!db || !dbFilePath) return;
+  const data = db.export();
+  const buffer = Buffer.from(data);
+  fs.writeFileSync(dbFilePath, buffer);
+}
+
+function runMigrations(database: SqlJsDatabase) {
   try {
-    // SQLite-compatible schema
     const statements = [
       `CREATE TABLE IF NOT EXISTS credentials (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -136,7 +146,7 @@ function runMigrations(database: Database.Database) {
 
     for (const stmt of statements) {
       try {
-        database.exec(stmt);
+        database.run(stmt);
       } catch (err: any) {
         if (!err.message?.includes('already exists')) {
           log.warn('DB', `Migration warning: ${err.message}`);
@@ -150,7 +160,7 @@ function runMigrations(database: Database.Database) {
   }
 }
 
-export function getDb(): Database.Database {
+export function getDb(): SqlJsDatabase {
   if (!db) throw new Error('Database not initialized. Run initDatabase() first.');
   return db;
 }
@@ -158,7 +168,6 @@ export function getDb(): Database.Database {
 /**
  * Execute a query and return rows.
  * Supports both SELECT (returns rows) and INSERT/UPDATE/DELETE (returns result info).
- * Uses ? placeholders compatible with the existing codebase.
  */
 export async function query(sql: string, params?: any[]): Promise<any> {
   const database = getDb();
@@ -177,11 +186,22 @@ export async function query(sql: string, params?: any[]): Promise<any> {
 
   if (trimmed.startsWith('SELECT') || trimmed.startsWith('WITH')) {
     const stmt = database.prepare(sqliteSQL);
-    return stmt.all(...normalizedParams);
+    if (normalizedParams.length > 0) {
+      stmt.bind(normalizedParams);
+    }
+    const rows: any[] = [];
+    while (stmt.step()) {
+      const row = stmt.getAsObject();
+      rows.push(row);
+    }
+    stmt.free();
+    return rows;
   } else {
-    const stmt = database.prepare(sqliteSQL);
-    const result = stmt.run(...normalizedParams);
-    return { affectedRows: result.changes, insertId: result.lastInsertRowid };
+    database.run(sqliteSQL, normalizedParams);
+    const changes = database.getRowsModified();
+    // Persist to disk after writes
+    saveDatabase();
+    return { affectedRows: changes, insertId: 0 };
   }
 }
 
@@ -191,11 +211,7 @@ export async function query(sql: string, params?: any[]): Promise<any> {
 function convertToSQLite(sql: string): string {
   let result = sql;
 
-  // Replace backtick-quoted identifiers (both work in SQLite, but just in case)
-  // No change needed - SQLite supports backticks
-
   // Handle INSERT ... ON DUPLICATE KEY UPDATE -> INSERT OR REPLACE
-  // This is the most common MySQL-ism in the codebase
   const onDuplicateMatch = result.match(/INSERT\s+INTO\s+(.+?)\s*\((.+?)\)\s*VALUES\s*\((.+?)\)\s*ON\s+DUPLICATE\s+KEY\s+UPDATE\s+.+/is);
   if (onDuplicateMatch) {
     const table = onDuplicateMatch[1].trim();
@@ -221,6 +237,7 @@ export function getPool(): any {
 
 export async function closeDatabase() {
   if (db) {
+    saveDatabase();
     db.close();
     db = null;
     log.info('DB', 'Database connection closed');

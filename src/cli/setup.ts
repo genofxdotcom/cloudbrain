@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { initDatabase } from '../db/connection';
 import { setCredential, getAllCredentials, deleteCredential, getCredentialsByCategory } from '../db/credentials';
+import { AIProviderManager, PROVIDER_TEMPLATES } from '../ai/providers';
 import { log } from '../utils/logger';
 
 const o = chalk.hex('#FF8C00'); // Orange shorthand
@@ -36,6 +37,7 @@ export async function setupCommand(): Promise<void> {
         name: 'action',
         message: o('What would you like to configure?'),
         choices: [
+          { name: `${o('🤖')}  AI providers & models`, value: 'ai' },
           { name: `${o('☁')}  Cloudflare credentials`, value: 'cloudflare' },
           { name: `${o('✈')}  Telegram bot`, value: 'telegram' },
           { name: `${o('🎮')}  Discord bot`, value: 'discord' },
@@ -50,6 +52,9 @@ export async function setupCommand(): Promise<void> {
     ]);
 
     switch (action) {
+      case 'ai':
+        await setupAIProvider();
+        break;
       case 'cloudflare':
         await setupCloudflare();
         break;
@@ -79,6 +84,77 @@ export async function setupCommand(): Promise<void> {
   await autoProvision();
 
   console.log(o('\n  ✓ Setup complete! Run ') + chalk.white('cloudbrain start') + o(' to launch.\n'));
+}
+
+async function setupAIProvider() {
+  console.log(o('\n  🤖  AI Provider Configuration\n'));
+
+  const { choice } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'choice',
+      message: o('Select an option:'),
+      choices: [
+        { name: `${o('⚡')} OpenAI (GPT-4o, GPT-3.5)`, value: 'openai' },
+        { name: `${o('⚡')} Anthropic (Claude Sonnet, Haiku, Opus)`, value: 'anthropic' },
+        { name: `${o('⚡')} Google Gemini (2.0 Flash, 1.5 Pro)`, value: 'gemini' },
+        { name: `${o('⚡')} Groq (Llama 3.3, Mixtral — fast & free tier)`, value: 'groq' },
+        { name: `${o('⚡')} Together AI (Llama, Mixtral)`, value: 'together' },
+        { name: `${o('⚡')} OpenRouter (multi-provider gateway)`, value: 'openrouter' },
+        { name: `${o('⚡')} Cloudflare Workers AI (uses CF credentials)`, value: 'cloudflare' },
+        new inquirer.Separator(),
+        { name: `${o('🔧')} Custom provider (any OpenAI-compatible API)`, value: 'custom' },
+        { name: chalk.gray('  Back'), value: 'back' },
+      ],
+    },
+  ]);
+
+  if (choice === 'back') return;
+
+  const providerManager = new AIProviderManager();
+  await providerManager.loadProviders();
+
+  if (choice === 'custom') {
+    const answers = await inquirer.prompt([
+      { type: 'input', name: 'name', message: 'Provider name:' },
+      { type: 'input', name: 'baseUrl', message: 'Base URL (e.g. https://api.example.com/v1):' },
+      { type: 'password', name: 'apiKey', message: 'API Key:', mask: '*' },
+      { type: 'input', name: 'models', message: 'Models (comma-separated, e.g. gpt-4,gpt-3.5):' },
+    ]);
+
+    if (answers.name && answers.baseUrl && answers.apiKey) {
+      const id = answers.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+      const models = answers.models.split(',').map((m: string) => m.trim()).filter((m: string) => m);
+      await providerManager.addProvider(id, answers.name, answers.baseUrl, answers.apiKey, models);
+      console.log(chalk.green(`\n  ✓ Custom provider "${answers.name}" added\n`));
+    }
+  } else if (choice === 'cloudflare') {
+    // Cloudflare uses the existing CF_API_TOKEN
+    const template = PROVIDER_TEMPLATES.cloudflare;
+    const cfToken = await (await import('../db/credentials')).getCredential('CF_API_TOKEN');
+    if (!cfToken) {
+      console.log(chalk.yellow('\n  Cloudflare API token not set. Configure Cloudflare first.\n'));
+      return;
+    }
+    await providerManager.addProvider('cloudflare', template.name, template.baseUrl, cfToken, template.models);
+    console.log(chalk.green(`\n  ✓ Cloudflare Workers AI added (${template.models.length} models)\n`));
+  } else {
+    const template = PROVIDER_TEMPLATES[choice];
+    if (!template) return;
+
+    console.log(chalk.gray(`\n  ${template.name} — Available models: ${template.models.join(', ')}\n`));
+
+    const answers = await inquirer.prompt([
+      { type: 'password', name: 'apiKey', message: `${template.name} API Key:`, mask: '*' },
+    ]);
+
+    if (answers.apiKey) {
+      await providerManager.addProvider(choice, template.name, template.baseUrl, answers.apiKey, template.models);
+      console.log(chalk.green(`\n  ✓ ${template.name} added (${template.models.length} models)\n`));
+      console.log(chalk.gray(`  Active model: ${template.models[0]}`));
+      console.log(chalk.gray(`  Switch via Telegram: /models\n`));
+    }
+  }
 }
 
 async function setupCloudflare() {

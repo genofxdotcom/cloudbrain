@@ -30,10 +30,18 @@ export async function startAgent(): Promise<void> {
   // 2. Core services
   const wrangler = new WranglerExecutor();
   const ai = new WorkersAI();
+  await ai.init();
   const search = new WebSearch();
   const context = new ContextManager();
   const channels = new ChannelManager();
   await channels.initialize();
+
+  // Give Telegram access to provider manager for /models and /provider commands
+  const { TelegramChannel } = await import('./channels/telegram');
+  const telegramCh = channels.getChannel('telegram');
+  if (telegramCh && telegramCh instanceof TelegramChannel) {
+    telegramCh.setProviderManager(ai.getProviderManager());
+  }
 
   // 3. Scheduler
   const scheduler = new HeartbeatScheduler(channels);

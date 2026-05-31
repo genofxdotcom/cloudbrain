@@ -153,6 +153,15 @@ function runMigrations(database: SqlJsDatabase) {
         UNIQUE(user_id, category, key)
       )`,
       `CREATE INDEX IF NOT EXISTS idx_user_prefs_user ON user_preferences(user_id)`,
+      `CREATE TABLE IF NOT EXISTS ai_providers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        base_url TEXT NOT NULL,
+        api_key TEXT NOT NULL,
+        models TEXT DEFAULT '[]',
+        is_active INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now'))
+      )`,
       `CREATE TABLE IF NOT EXISTS user_facts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id TEXT NOT NULL,

@@ -1,0 +1,19 @@
+# CloudBrain local development secrets.
+# Copy to .dev.vars (git-ignored) and fill in what you need.
+# NEVER commit real values.
+
+# Composio BYOK (integrations) — from https://dashboard.composio.dev
+# COMPOSIO_API_KEY=
+
+# Optional model providers
+# OPENAI_API_KEY=
+# ANTHROPIC_API_KEY=
+# GEMINI_API_KEY=
+# GROQ_API_KEY=
+# OPENROUTER_API_KEY=
+
+# Optional: harden Cloudflare Access JWT verification in dev
+# CLOUDFLARE_ACCESS_TEAM=your-team
+# CLOUDFLARE_ACCESS_AUD=your-access-app-aud-tag
+
+# OPENROUTER_API_KEY=

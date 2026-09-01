@@ -1,246 +1,156 @@
 ![CloudBrain](cloudbrain.png)
 
-# CloudBrain 2.0
+# CloudBrain V3
 
-An autonomous multi-agent AI system that runs on your VPS, manages your Cloudflare infrastructure through natural language, and gets smarter the more you use it. Talk to it via Telegram, Discord, or WhatsApp — it runs forever in the background until you stop it.
+**An AI operating environment on Cloudflare.** Chat with an agent that plans, executes tools,
+acts through your connected apps (Composio), and makes every step visible — plans, tool calls,
+approvals, and results — running entirely on Workers, D1, Durable Objects, and R2.
 
-## What It Does
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/truehannan/cloudbrain)
 
-- **Runs as a Daemon** — Starts in background, survives terminal close, runs until machine shuts down
-- **Remembers Everything** — Learns your name, preferences, projects, patterns from every interaction
-- **Multi-Agent System** — 5 specialized skill agents (Coder, Deployer, Searcher, Scheduler, FileManager)
-- **Action-Oriented** — Executes tasks instead of just talking about them
-- **Manages Cloudflare** — Workers, KV, D1, R2, DNS, Domains via Wrangler
-- **Multi-Channel** — Telegram, Discord, WhatsApp + CLI shell
-- **AI Powered** — Text, image generation, audio transcription via Workers AI
-- **Scheduled Tasks** — Cron-based heartbeat system for recurring automations
-- **Built-in Search** — No API keys needed, uses DuckDuckGo
-- **Local Code Execution** — Writes and runs code locally, deploys to Cloudflare
-- **Permission System** — Asks before destructive operations
-- **Zero-Config Database** — Embedded SQLite, no external server
+> **V3** runs as a single root-level Worker: the frontend is served from the same deployment
+> via the Assets binding, identity is handled by **Cloudflare Access** (no built-in auth),
+> and automations use dynamic schedules driven by one static cron trigger.
 
-![Cloudbrain V2](Cloudbrain-v2.png)
+## What it does
 
-## Requirements
-
-- Node.js 18+
-- Cloudflare account with API token
-- At least one channel: Telegram bot token, Discord bot token, or WhatsApp Cloud API
-
-## Install
-
-```bash
-git clone https://github.com/truehannan/cloudbrain.git
-cd cloudbrain
-npm install
-npm link   # Makes 'cloudbrain' command available globally
-```
-
-## Setup
-
-```bash
-cloudbrain setup
-```
-
-The wizard will:
-1. Automatically create an embedded SQLite database at `~/.cloudbrain/cloudbrain.db`
-2. Ask for Cloudflare Account ID + API Token
-3. Ask for channel credentials (Telegram/Discord/WhatsApp)
-4. Auto-provision D1 database and verify Workers AI access
-
-No external database server needed — everything is self-contained.
-
-## Usage
-
-### Start the Agent (Background Daemon)
-
-```bash
-cloudbrain start
-```
-
-This spawns a background process that **runs forever** until you stop it or the machine shuts down. Closing the terminal does NOT stop it.
-
-### Stop / Restart
-
-```bash
-cloudbrain stop       # Stop the daemon
-cloudbrain restart    # Stop + start
-```
-
-### Run in Foreground (for debugging)
-
-```bash
-cloudbrain start --foreground
-```
-
-### Other Commands
-
-```bash
-cloudbrain status     # Show daemon status (running/stopped, PID)
-cloudbrain logs       # Show recent log output
-cloudbrain logs -f    # Follow logs in real-time
-cloudbrain tasks      # View scheduled tasks
-cloudbrain channels   # View configured channels
-cloudbrain deploy     # Deploy a worker
-cloudbrain setup      # Re-run setup wizard
-cloudbrain shell      # Interactive CLI
-```
-
-## Multi-Agent Architecture
-
-CloudBrain uses 5 specialized skill agents coordinated by a Planner:
-
-| Agent | Skill | What It Does |
-|-------|-------|-------------|
-| **Coder** | Code & Commands | Writes code, runs shell commands, manages `~/.cloudbrain/workspace/` |
-| **Deployer** | Cloudflare | Workers, KV, D1, R2, DNS — all via Wrangler |
-| **Searcher** | Web & Local | DuckDuckGo search + local file grep |
-| **Scheduler** | Cron Tasks | Creates/manages recurring automated tasks |
-| **FileManager** | Files | Create, read, delete, move local files |
-
-### How It Works
-
-1. **Message arrives** (Telegram/Discord/WhatsApp/CLI)
-2. **Planner Agent** analyzes intent, splits multi-step requests, assigns to skill agents
-3. **Executor** dispatches to the correct skill agent
-4. **Skill Agent** performs the action (runs code, deploys, searches, etc.)
-5. **Result returned** — concise, action-oriented (no fluff)
-6. **Context stored** — conversation, facts, preferences all persisted for next time
-
-## Memory & Learning
-
-CloudBrain automatically learns from every interaction:
-
-- **Explicit memories** — "remember that my server IP is 1.2.3.4"
-- **Auto-detected facts** — name, timezone, projects mentioned
-- **Preferences** — tools, languages, deployment patterns you use
-- **Usage patterns** — what commands you run most often
-
-Next time you interact, it already knows your context.
-
-## What You Can Say
-
-### Cloudflare Management
-```
-"list my workers"
-"deploy worker my-api"
-"create kv namespace cache"
-"create database users"
-"create bucket media"
-"delete worker old-one"
-```
-
-### Code & Commands
-```
-"write a script that fetches weather data"
-"run command: ls -la"
-"npm install express"
-"git clone https://github.com/user/repo"
-```
-
-### File Operations
-```
-"create file config.json"
-"read file index.js"
-"list files"
-"delete file old-script.js"
-```
-
-### Web Search (Built-in, No API Key)
-```
-"search for latest Node.js release"
-"look up cloudflare workers pricing"
-```
-
-### Scheduling
-```
-"send me news at 9am every day"
-"run backup at midnight"
-"check system status every hour"
-```
-
-### Memory
-```
-"remember that my deploy branch is production"
-"my name is Alex"
-"I prefer TypeScript over JavaScript"
-"what do you remember about me?"
-```
-
-### Multi-Step
-```
-"search for express.js docs then write a hello world server"
-"create a worker called api then deploy it"
-```
+- **Chat that acts** — Quick mode answers directly; Agent and Deep modes plan, execute tools
+  (web search, page fetch, Composio actions), and report what they did.
+- **Visible execution** — every plan, tool call, and integration action streams to the UI in
+  real time over a per-user WebSocket (Durable Objects). Nothing happens invisibly.
+- **Human control** — destructive, sensitive, and externally-visible actions pause for
+  approval with *Allow once / Always allow / Deny*; decisions are persisted and revocable.
+- **Integrations via Composio (BYOK)** — connect Gmail, Slack, GitHub, Notion, and hundreds
+  more. OAuth, API-key, and no-auth flows are driven by Composio's per-toolkit metadata, not
+  hardcoded buttons. Credentials live in Composio; CloudBrain stores only identifiers.
+- **Dynamic schedules** — create cron-scheduled agent runs in the UI. One static
+  `* * * * *` Worker trigger fans out to your schedules in D1; missed-minute guards and run
+  history included.
+- **Provider-flexible models** — Workers AI works out of the box with zero config; OpenAI,
+  Anthropic, Gemini, Groq, and OpenRouter activate when their secrets are set.
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────┐
-│                 CLI + Daemon                      │
-│  cloudbrain start | stop | restart | status       │
-└──────────────────────┬───────────────────────────┘
-                       │
-┌──────────────────────▼───────────────────────────┐
-│              AGENT CORE (index.ts)               │
-│    Message → Context → Plan → Execute → Learn    │
-└─────┬──────────┬──────────┬──────────┬───────────┘
-      │          │          │          │
-┌─────▼────┐┌───▼────┐┌────▼───┐┌─────▼──────┐
-│ Channels ││Planner ││Context ││ Permission │
-│Telegram  ││ Agent  ││Manager ││  Manager   │
-│Discord   ││        ││Memory  ││            │
-│WhatsApp  ││        ││Learning││            │
-└─────┬────┘└───┬────┘└────┬───┘└────────────┘
-      │         │          │
-┌─────▼─────────▼──────────▼────────────────────┐
-│            SKILL REGISTRY                     │
-│  ┌────────┐ ┌─────────┐ ┌──────────┐         │
-│  │ Coder  │ │Deployer │ │ Searcher │         │
-│  │Code/Run│ │CF/Wrnglr│ │DuckDuckGo│         │
-│  └────────┘ └─────────┘ └──────────┘         │
-│  ┌──────────┐ ┌─────────────┐                │
-│  │Scheduler │ │ FileManager │                │
-│  │  Cron    │ │  Local FS   │                │
-│  └──────────┘ └─────────────┘                │
-└───────────────────────┬───────────────────────┘
-                        │
-┌───────────────────────▼───────────────────────┐
-│         SQLite Database (embedded)            │
-│  credentials | conversations | memories       │
-│  user_preferences | user_facts | task_log     │
-│  scheduled_tasks | system_config | permissions│
-└───────────────────────┬───────────────────────┘
-                        │
-          ┌─────────────▼─────────────┐
-          │     Cloudflare (Remote)   │
-          │  Workers | KV | D1 | R2   │
-          │  DNS | Zones | AI | Pages │
-          └───────────────────────────┘
+src/                  Cloudflare Worker (root-level — this is what deploys)
+  index.ts            fetch + scheduled handlers, Access gate
+  router.ts           zero-dependency API router
+  agent.ts            orchestrator: plan → tools → approvals → respond
+  scheduler.ts        dynamic cron fan-out (static trigger → D1 schedules)
+  cron.ts             cron parsing / matching / next-run math
+  auth.ts             Cloudflare Access JWT verification + user provisioning
+  models.ts           provider-flexible model gateway
+  tools.ts            tool registry + built-in tools
+  realtime.ts         RealtimeHub Durable Object (WS hibernation)
+web/                  React SPA (built to web/dist, served by the Worker)
+packages/
+  shared/             types + zod schemas + redaction
+  integrations/       server-only Composio adapter (integration gateway)
+schema.sql            D1 schema
+wrangler.jsonc        Worker config — assets, bindings, cron trigger
 ```
 
-## Data Storage
+| Cloudflare service | Used for |
+|---|---|
+| **Workers** | API + agent runtime + static asset serving |
+| **D1** | users, conversations, messages, approvals, schedules, activity |
+| **Durable Objects** | `RealtimeHub` — one per user, WebSocket hibernation |
+| **R2** | artifacts bucket |
+| **Workers AI** | default model, zero-config |
+| **Cron Triggers** | one `* * * * *` trigger driving dynamic schedules |
 
-| Data | Where | Purpose |
-|------|-------|---------|
-| Credentials | `~/.cloudbrain/cloudbrain.db` | API tokens, never leaves machine |
-| Conversations | SQLite | Context for AI responses |
-| Memories | SQLite | Explicit "remember X" items |
-| User Facts | SQLite | Auto-learned info about you |
-| Preferences | SQLite | Your patterns and choices |
-| Scheduled Tasks | SQLite | Survives restarts |
-| Daemon PID | `~/.cloudbrain/cloudbrain.pid` | Process tracking |
-| Daemon Logs | `~/.cloudbrain/cloudbrain.log` | Runtime output |
-| Workspace | `~/.cloudbrain/workspace/` | Code written by Coder agent |
+## Deploy to Cloudflare
 
-## Development
+Click the button above, or run:
 
 ```bash
-npm run dev              # Run with ts-node (no build)
-npm run build            # Compile TypeScript to dist/
-cloudbrain start --foreground   # Run in foreground for debugging
+npm install
+npm run deploy        # builds web/ then deploys the Worker
 ```
+
+After the first deploy:
+
+1. **D1 database** — if you deployed via CLI (the button flow provisions bindings
+   interactively):
+   ```bash
+   npx wrangler d1 create cloudbrain
+   # → put the database_id into wrangler.jsonc
+   npm run db:remote            # applies schema.sql
+   ```
+2. **R2 bucket**:
+   ```bash
+   npx wrangler r2 bucket create cloudbrain-artifacts
+   ```
+3. **Secrets** (see below) — at minimum `COMPOSIO_API_KEY` if you want integrations.
+4. **Cloudflare Access** (required) — see next section.
+
+## Cloudflare Access (identity)
+
+CloudBrain has **no built-in login**. All identity comes from Cloudflare Access:
+
+1. In Zero Trust, create a **self-hosted application** covering your Worker's domain
+   (e.g. `cloudbrain.yourdomain.com/*` or your `*.workers.dev` subdomain).
+2. Add an **Allow policy** for the emails/IdP groups that may use CloudBrain.
+3. That's it — the Worker verifies the injected `Cf-Access-Jwt-Assertion` JWT against your
+   team's JWKS on every request and auto-provisions the user on first visit.
+
+Optional hardening (recommended so API clients can't bypass the browser flow):
+
+```bash
+npx wrangler secret put CLOUDFLARE_ACCESS_TEAM    # your team: <team>.cloudflareaccess.com
+npx wrangler secret put CLOUDFLARE_ACCESS_AUD     # the application's AUD tag (Zero Trust → App → Overview)
+```
+
+When set, JWTs must carry the matching `aud` claim — requests without a valid token get
+`401` regardless of headers.
+
+## Environment
+
+**No env file is required to boot** — everything runs on bindings, and the default model
+(Workers AI) needs no key. Everything else is optional BYOK:
+
+| Secret | Required | Purpose |
+|---|---|---|
+| `COMPOSIO_API_KEY` | for integrations | Composio key from [dashboard.composio.dev](https://dashboard.composio.dev) |
+| `OPENAI_API_KEY` | optional | Adds OpenAI models to the picker |
+| `ANTHROPIC_API_KEY` | optional | Adds Anthropic models |
+| `GEMINI_API_KEY` | optional | Adds Gemini models |
+| `GROQ_API_KEY` | optional | Adds Groq models |
+| `OPENROUTER_API_KEY` | optional | Adds OpenRouter models |
+| `CLOUDFLARE_ACCESS_TEAM` | optional | Hardens Access JWT verification |
+| `CLOUDFLARE_ACCESS_AUD` | optional | Enforces the Access app audience |
+
+Set with `npx wrangler secret put <NAME>` or in the dashboard. For local dev, copy
+`.dev.vars.example` → `.dev.vars`. Secrets are never exposed to the browser, never logged,
+and never stored in D1 — only boolean "configured" flags cross the API.
+
+For the Composio OAuth callback, add `<your-worker-url>/integrations/callback` as the
+allowed callback in your Composio auth configs.
+
+## Local development
+
+```bash
+npm install
+npm run db:local          # apply schema.sql to local D1
+npm run dev               # builds web/ then wrangler dev → http://localhost:8787
+npm run dev:web           # optional: vite hot-reload on :5173 (proxies /api + /ws)
+```
+
+Local dev also needs a `.dev.vars` (see `.dev.vars.example`). To emulate Access locally,
+either use `wrangler dev --remote` against an Access-protected route, or test API handlers
+by temporarily setting a development identity header policy in your Access app.
+
+## Security model
+
+- Every API request and WebSocket upgrade verifies the Access JWT (RS256, JWKS-cached,
+  expiry + issuer checks, optional audience pin).
+- Provider keys never enter model context, logs, or API responses.
+- `packages/shared` redaction scrubs tool-call and activity records before persistence.
+- Composio actions execute only server-side through `packages/integrations`; connected
+  accounts are scoped per CloudBrain user and ownership is verified before every
+  execute/disconnect.
+- Approval gates live in the orchestrator — the model cannot bypass them.
 
 ## License
 
-See LICENSE file.
+MIT — see [LICENSE](LICENSE).

@@ -1,0 +1,70 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cloudbrain",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-05-05",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "web/dist",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "cloudbrain",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "ARTIFACTS",
+      "bucket_name": "cloudbrain-artifacts"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "REALTIME",
+        "class_name": "RealtimeHub"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["RealtimeHub"]
+    }
+  ],
+  "ai": {
+    "binding": "AI"
+  },
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "APP_NAME": "CloudBrain"
+  }
+  /*
+  ── Secrets (server-only; set with `wrangler secret put` or dashboard) ──
+  COMPOSIO_API_KEY        — Composio BYOK key; enables integrations (optional)
+  OPENAI_API_KEY          — optional, enables OpenAI models
+  ANTHROPIC_API_KEY       — optional, enables Anthropic models
+  GEMINI_API_KEY          — optional, enables Gemini models
+  GROQ_API_KEY            — optional
+  OPENROUTER_API_KEY      — optional
+
+  ── Auth: Cloudflare Access ──────────────────────────────────────────────
+  Identity comes from Cloudflare Access (Zero Trust). Configure:
+    1. Zero Trust → Applications → self-hosted app covering <worker-domain>/*
+    2. Zero Trust → Settings → Authentication → Login page → Get JWKS URL
+    3. Zero Trust → Access → Service Auth → Get policy AUD tag
+  Then set the optional secrets below (falls back to Access team-domain
+  auto-discovery if omitted):
+    CF_ACCESS_JWKS_URL      — e.g. https://<team>.cloudflareaccess.com/cdn-cgi/access/certs
+    CF_ACCESS_AUD           — the application AUD tag
+  Local dev: copy .dev.vars.example to .dev.vars
+  */
+}

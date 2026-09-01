@@ -12,9 +12,6 @@
     {
       "binding": "DB",
       "database_name": "cloudbrain",
-      // Injected at build time from the D1_DATABASE_ID env var by
-      // scripts/sync-d1-id.mjs (open-source repo → id is not committed).
-      // Binding stays native — no Account ID / API token involved.
       "database_id": "REPLACE_WITH_D1_DATABASE_ID"
     }
   ],
@@ -59,15 +56,12 @@
   GROQ_API_KEY            — optional
   OPENROUTER_API_KEY      — optional
 
-  ── Auth: Cloudflare Access ──────────────────────────────────────────────
-  Identity comes from Cloudflare Access (Zero Trust). Configure:
-    1. Zero Trust → Applications → self-hosted app covering <worker-domain>/*
-    2. Zero Trust → Settings → Authentication → Login page → Get JWKS URL
-    3. Zero Trust → Access → Service Auth → Get policy AUD tag
-  Then set the optional secrets below (falls back to Access team-domain
-  auto-discovery if omitted):
-    CF_ACCESS_JWKS_URL      — e.g. https://<team>.cloudflareaccess.com/cdn-cgi/access/certs
-    CF_ACCESS_AUD           — the application AUD tag
+  ── Identity ──────────────────────────────────────────────────────────────
+  Authentication is handled externally (e.g. Cloudflare Access in front of
+  the deployment). This Worker only reads the identity email header the
+  proxy sets: cf-access-authenticated-user-email (or x-forwarded-email).
+  Local dev without a proxy maps to a single shared user automatically.
+
   Local dev: copy .dev.vars.example to .dev.vars
   */
 }

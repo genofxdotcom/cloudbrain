@@ -21,10 +21,6 @@ export interface Env {
   GROQ_API_KEY?: string;
   OPENROUTER_API_KEY?: string;
 
-  // Cloudflare Access verification (optional — auto-discovered if omitted)
-  CF_ACCESS_JWKS_URL?: string;
-  CF_ACCESS_AUD?: string;
-
   // Vars
   APP_NAME: string;
 }

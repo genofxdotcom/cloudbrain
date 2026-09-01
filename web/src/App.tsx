@@ -1,7 +1,6 @@
 import React from 'react';
 import { UserProvider, useUser } from './userContext';
 import { useHashRoute, useTheme, useToasts } from './hooks';
-import { AuthScreen } from './pages/AuthScreen';
 import { ChatPage } from './pages/ChatPage';
 import { IntegrationsPage } from './pages/IntegrationsPage';
 import { AutomationsPage, MemoryPage, SettingsPage } from './pages/Panels';
@@ -23,14 +22,9 @@ function Shell(): React.ReactElement {
   if (loading) {
     return <div className="empty">Loading CloudBrain…</div>;
   }
-  if (!user) {
-    return (
-      <>
-        <AuthScreen />
-        <ToastRegion toasts={toasts} />
-      </>
-    );
-  }
+  // Identity (if any) comes from the proxy in front of the deployment
+  // (e.g. Cloudflare Access). The app itself has no login screen and works
+  // regardless — data maps to the resolved user or a shared local user.
 
   const page = (() => {
     switch (route) {
@@ -73,9 +67,11 @@ function Shell(): React.ReactElement {
         <button className="nav-item" onClick={() => void toggleTheme()} title="Toggle theme">
           {theme === 'dark' ? '☀ Light mode' : '☾ Dark mode'}
         </button>
-        <div className="small muted" style={{ padding: '6px 8px' }}>
-          {user.email}
-        </div>
+        {user && (
+          <div className="small muted" style={{ padding: '6px 8px' }}>
+            {user.email}
+          </div>
+        )}
       </nav>
 
       <main className="main">

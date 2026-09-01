@@ -7,13 +7,15 @@
  *   /ws upgrade  → per-user RealtimeHub Durable Object
  *   scheduled()  → dynamic schedule fan-out (single * * * * * cron trigger)
  *
- * Auth is Cloudflare Access (Zero Trust). See src/auth.ts + README.
+ * Authentication is handled by whatever sits in front of the deployment
+ * (e.g. Cloudflare Access). This Worker trusts the identity header and
+ * scopes all data per resolved user.
  */
 
 import type { Env } from './env.js';
 import { router } from './router.js';
 import { RealtimeHub } from './realtime.js';
-import { resolveAccessUser, unauthorized } from './auth.js';
+import { resolveOrSharedUser } from './auth.js';
 import { runDueSchedules } from './scheduler.js';
 
 export { RealtimeHub };
@@ -28,17 +30,15 @@ export default {
       if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
         return new Response('Expected WebSocket upgrade', { status: 426 });
       }
-      const user = await resolveAccessUser(env.DB, env, request);
-      if (!user) return unauthorized();
+      const user = await resolveOrSharedUser(env.DB, request);
       const stub = env.REALTIME.get(env.REALTIME.idFromName(user.id));
       const connectUrl = new URL('https://realtime.internal/connect');
       return stub.fetch(new Request(connectUrl, { headers: request.headers }));
     }
 
-    // ── API routes (Access-authenticated) ─────────────────────────────────
+    // ── API routes ─────────────────────────────────────────────────────────
     if (url.pathname.startsWith('/api/')) {
-      const user = await resolveAccessUser(env.DB, env, request);
-      if (!user) return unauthorized();
+      const user = await resolveOrSharedUser(env.DB, request);
       const apiResponse = await router.handle(request, env, user, ctx);
       return withSecurityHeaders(apiResponse ?? new Response('Not found.', { status: 404 }));
     }
@@ -50,7 +50,7 @@ export default {
   /**
    * Dynamic schedules via a single static cron trigger: every minute we load
    * enabled schedules from D1, fire the ones whose cron matches, and record
-   * run history. Agent execution itself is invoked per due schedule.
+   * run history.
    */
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(runDueSchedules(env));

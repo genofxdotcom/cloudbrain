@@ -1,7 +1,7 @@
 /**
  * API router — zero-dependency URL routing on top of the Worker fetch handler.
- * All routes require a Cloudflare Access identity (verified in index.ts);
- * every handler receives the resolved user in ctx.
+ * Identity is resolved in index.ts (from the proxy email header); every
+ * handler receives the resolved user in ctx.
  */
 
 import type { Env } from './env.js';
@@ -139,7 +139,6 @@ router.add('GET', '/api/auth/me', async (ctx) =>
   guard(async () => {
     return Response.json({
       user: { id: ctx.user.id, email: ctx.user.email, displayName: ctx.user.display_name, isAdmin: !!ctx.user.is_admin },
-      provider: 'cloudflare-access',
     });
   })
 );

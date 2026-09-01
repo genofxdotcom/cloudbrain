@@ -9,8 +9,9 @@ approvals, and results — running entirely on Workers, D1, Durable Objects, and
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/truehannan/cloudbrain)
 
 > **V3** runs as a single root-level Worker: the frontend is served from the same deployment
-> via the Assets binding, identity is handled by **Cloudflare Access** (no built-in auth),
-> and automations use dynamic schedules driven by one static cron trigger.
+> via the Assets binding, and automations use dynamic schedules driven by one static cron
+> trigger. Authentication is handled by whatever you put in front of the deployment (e.g.
+> Cloudflare Access) — CloudBrain itself manages no credentials.
 
 ## What it does
 
@@ -33,12 +34,12 @@ approvals, and results — running entirely on Workers, D1, Durable Objects, and
 
 ```
 src/                  Cloudflare Worker (root-level — this is what deploys)
-  index.ts            fetch + scheduled handlers, Access gate
+  index.ts            fetch + scheduled handlers
   router.ts           zero-dependency API router
   agent.ts            orchestrator: plan → tools → approvals → respond
   scheduler.ts        dynamic cron fan-out (static trigger → D1 schedules)
   cron.ts             cron parsing / matching / next-run math
-  auth.ts             Cloudflare Access JWT verification + user provisioning
+  auth.ts             identity mapping (reads proxy email header, provisions users)
   models.ts           provider-flexible model gateway
   tools.ts            tool registry + built-in tools
   realtime.ts         RealtimeHub Durable Object (WS hibernation)
@@ -82,27 +83,26 @@ After the first deploy:
    npx wrangler r2 bucket create cloudbrain-artifacts
    ```
 3. **Secrets** (see below) — at minimum `COMPOSIO_API_KEY` if you want integrations.
-4. **Cloudflare Access** (required) — see next section.
+4. **Protect the deployment** (optional but recommended) — put Cloudflare Access or any
+   auth proxy in front of the domain. See next section.
 
-## Cloudflare Access (identity)
+## Identity (external)
 
-CloudBrain has **no built-in login**. All identity comes from Cloudflare Access:
+CloudBrain has **no login screen and manages no credentials**. Authentication is entirely
+external — e.g. a Cloudflare Access self-hosted application over the domain, or any proxy
+you run. The Worker simply reads the identity email the proxy already established from
+these headers (first match wins):
 
-1. In Zero Trust, create a **self-hosted application** covering your Worker's domain
-   (e.g. `cloudbrain.yourdomain.com/*` or your `*.workers.dev` subdomain).
-2. Add an **Allow policy** for the emails/IdP groups that may use CloudBrain.
-3. That's it — the Worker verifies the injected `Cf-Access-Jwt-Assertion` JWT against your
-   team's JWKS on every request and auto-provisions the user on first visit.
+- `cf-access-authenticated-user-email` (set by Cloudflare Access)
+- `x-forwarded-email`
+- `x-email`
 
-Optional hardening (recommended so API clients can't bypass the browser flow):
+It maps that email to a user row (auto-provisioned on first visit) so conversations,
+memory, integrations, and schedules stay scoped per person.
 
-```bash
-npx wrangler secret put CLOUDFLARE_ACCESS_TEAM    # your team: <team>.cloudflareaccess.com
-npx wrangler secret put CLOUDFLARE_ACCESS_AUD     # the application's AUD tag (Zero Trust → App → Overview)
-```
-
-When set, JWTs must carry the matching `aud` claim — requests without a valid token get
-`401` regardless of headers.
+**No proxy? No problem.** Without identity headers (e.g. plain `wrangler dev`), everything
+maps to a single shared local user, so the app is fully usable out of the box. Lock down
+who can reach the deployment at the edge — that's the right layer for it anyway.
 
 ## Environment
 
@@ -117,8 +117,6 @@ When set, JWTs must carry the matching `aud` claim — requests without a valid 
 | `GEMINI_API_KEY` | optional | Adds Gemini models |
 | `GROQ_API_KEY` | optional | Adds Groq models |
 | `OPENROUTER_API_KEY` | optional | Adds OpenRouter models |
-| `CLOUDFLARE_ACCESS_TEAM` | optional | Hardens Access JWT verification |
-| `CLOUDFLARE_ACCESS_AUD` | optional | Enforces the Access app audience |
 
 Set with `npx wrangler secret put <NAME>` or in the dashboard. For local dev, copy
 `.dev.vars.example` → `.dev.vars`. Secrets are never exposed to the browser, never logged,
@@ -136,14 +134,12 @@ npm run dev               # builds web/ then wrangler dev → http://localhost:8
 npm run dev:web           # optional: vite hot-reload on :5173 (proxies /api + /ws)
 ```
 
-Local dev also needs a `.dev.vars` (see `.dev.vars.example`). To emulate Access locally,
-either use `wrangler dev --remote` against an Access-protected route, or test API handlers
-by temporarily setting a development identity header policy in your Access app.
+Local dev also needs a `.dev.vars` (see `.dev.vars.example`).
 
 ## Security model
 
-- Every API request and WebSocket upgrade verifies the Access JWT (RS256, JWKS-cached,
-  expiry + issuer checks, optional audience pin).
+- Authentication happens at the edge/proxy; the Worker trusts the identity header and
+  scopes all data per resolved user.
 - Provider keys never enter model context, logs, or API responses.
 - `packages/shared` redaction scrubs tool-call and activity records before persistence.
 - Composio actions execute only server-side through `packages/integrations`; connected

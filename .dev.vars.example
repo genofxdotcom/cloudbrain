@@ -12,8 +12,4 @@
 # GROQ_API_KEY=
 # OPENROUTER_API_KEY=
 
-# Optional: harden Cloudflare Access JWT verification in dev
-# CLOUDFLARE_ACCESS_TEAM=your-team
-# CLOUDFLARE_ACCESS_AUD=your-access-app-aud-tag
-
 # OPENROUTER_API_KEY=

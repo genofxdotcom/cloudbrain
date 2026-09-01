@@ -12,6 +12,9 @@
     {
       "binding": "DB",
       "database_name": "cloudbrain",
+      // Injected at build time from the D1_DATABASE_ID env var by
+      // scripts/sync-d1-id.mjs (open-source repo → id is not committed).
+      // Binding stays native — no Account ID / API token involved.
       "database_id": "REPLACE_WITH_D1_DATABASE_ID"
     }
   ],

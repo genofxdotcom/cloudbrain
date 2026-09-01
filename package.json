@@ -7,13 +7,14 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run build -w @cloudbrain/web && wrangler dev",
+    "dev": "node scripts/sync-d1-id.mjs && npm run build -w @cloudbrain/web && wrangler dev",
     "dev:web": "cd web && npm run dev",
-    "build": "cd web && npm run build",
+    "build": "node scripts/sync-d1-id.mjs && cd web && npm run build",
     "typecheck": "tsc --noEmit",
-    "deploy": "npm run build && wrangler deploy",
+    "deploy": "npm run build && node scripts/check-d1-id.mjs && wrangler deploy",
     "db:local": "wrangler d1 execute cloudbrain --local --file=./schema.sql",
-    "db:remote": "wrangler d1 execute cloudbrain --remote --file=./schema.sql",
+    "db:remote": "node scripts/check-d1-id.mjs && wrangler d1 execute cloudbrain --remote --file=./schema.sql",
+    "sync:d1": "node scripts/sync-d1-id.mjs",
     "cf-typegen": "wrangler types"
   },
   "dependencies": {

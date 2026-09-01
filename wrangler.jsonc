@@ -12,7 +12,7 @@
     {
       "binding": "DB",
       "database_name": "cloudbrain",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID"
+      "database_id": "e97d5692-5c8a-4133-ad61-e2a2a28833a5"
     }
   ],
   "r2_buckets": [
